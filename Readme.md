@@ -10,14 +10,19 @@ A simple desktop application for **YouTube Music**.
 
 ---
 
-## Requirements
+## Get Started
 
-- **Node.js** (v14 or later)
-- **Electron** (v22 or later)
+### How to Use:
+
+1. **Download the ZIP**:
+   - Go to the [Releases](https://github.com/nubsuki/YouTube-Music-Player/releases) page and download the latest version of the app (ZIP file).
+
+2. **Unzip the File**:
+   - Extract the contents of the ZIP file to a folder of your choice.
+
+3. **Run the App**:
+   - Open the folder and double-click on `youtube-music-app.exe` to launch the app.
+
+That's it! 🎉 Enjoy your YouTube Music experience on the desktop.
 
 ---
-
-## Get the Latest Release
-
-You can download the latest version of the app from the **Releases** section on GitHub:  
-👉 **[Download Latest Release](https://github.com/nubsuki/YouTube-Music-Player/releases)** 👈
