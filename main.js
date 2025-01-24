@@ -112,6 +112,13 @@ if (!gotLock) {
         },
       ],
     },
+    {
+      label: "About",
+      click: () => {
+        const { shell } = require('electron');
+        shell.openExternal('https://github.com/nubsuki/YouTube-Music-Player'); // Replace with your GitHub repository URL
+      },
+    },
   ];
 
   // Ready event

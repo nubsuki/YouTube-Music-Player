@@ -23,6 +23,23 @@ A simple desktop application for **YouTube Music**.
 3. **Run the App**:
    - Open the folder and double-click on `youtube-music-app.exe` to launch the app.
 
+4. **Create a Desktop Icon** (Optional but Recommended):
+   - To easily access the app, create a shortcut on your desktop:
+     - **Right-click** on `youtube-music-app.exe` in the folder.
+     - Select **Send to > Desktop (create shortcut)**.
+     - Now you can quickly launch the app directly from your desktop.
+
 That's it! 🎉 Enjoy your YouTube Music experience on the desktop.
+
+---
+
+## Known Issues
+
+- **Pause Music Before Closing**: If you don't pause the music before quitting the app, it may continue playing in the background. To avoid this, make sure to pause your music before exiting the app.
+
+---
+
+## License
+This project is for personal use and is distributed "as-is".
 
 ---
