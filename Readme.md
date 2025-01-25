@@ -2,7 +2,7 @@
 
 A simple desktop application for **YouTube Music**.
 ---
-![YTMusic](ytmp.png)
+![YTMusic](assets/ytmp.png)
 ## Features
 
 - 🎵 **Desktop YouTube Music**: A dedicated YouTube Music app with no distractions.
