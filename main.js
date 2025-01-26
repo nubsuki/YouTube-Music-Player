@@ -1,22 +1,60 @@
 const { app, BrowserWindow, Menu, Tray } = require("electron");
 const path = require("path");
+const rpc = require("discord-rpc");
 
 let mainWindow;
 let tray = null;
-let minimizeToTray = true; // Default behavior
+let minimizeToTray = true;
+
+// Discord Rich Presence setup
+const clientId = "1#################";
+rpc.register(clientId);
+const client = new rpc.Client({ transport: "ipc" });
+
+// Function to set Discord Rich Presence activity
+function setDiscordActivity(songTitle = "Loading", artist = "Loading") {
+  if (!client) return;
+
+  client.setActivity({
+    details: `Listening to ${songTitle}`,
+    state: `by ${artist}`,
+    largeImageKey: "icon",
+    largeImageText: "YouTube Music",
+    instance: false,
+  });
+}
+
+// Fetch song info from YouTube Music
+async function getCurrentSongInfo() {
+  try {
+    const songTitle = await mainWindow.webContents.executeJavaScript(
+      `document.querySelector('.title.ytmusic-player-bar').textContent.trim()`
+    );
+    const artist = await mainWindow.webContents.executeJavaScript(
+      `document.querySelector('.byline.ytmusic-player-bar').textContent.trim()`
+    );
+    return { songTitle, artist };
+  } catch (error) {
+    console.error("Error fetching song info:", error);
+    return { songTitle: "Unknown Song", artist: "Unknown Artist" };
+  }
+}
 
 // Request a single instance lock
 const gotLock = app.requestSingleInstanceLock();
 
 if (!gotLock) {
-  app.quit(); // Quit if another instance is already running
+  app.quit();
 } else {
-  app.on("second-instance", (event, commandLine, workingDirectory) => {
-    // Focus the main window if it is already open
+  app.on("second-instance", () => {
     if (mainWindow) {
-      if (mainWindow.isMinimized()) mainWindow.restore();
-      
-      mainWindow.focus();
+      if (!mainWindow.isVisible()) {
+        mainWindow.show();
+      } else if (mainWindow.isMinimized()) {
+        mainWindow.restore();
+      } else {
+        mainWindow.focus();
+      }
     }
   });
 
@@ -37,21 +75,18 @@ if (!gotLock) {
       ),
     });
 
-    mainWindow.loadURL("https://music.youtube.com"); // Load YouTube Music
+    mainWindow.loadURL("https://music.youtube.com");
 
-    // Update the close event handler to create tray icon
-    mainWindow.on("close", function (event) {
+    // Minimize to tray on close
+    mainWindow.on("close", (event) => {
       if (minimizeToTray && !app.isQuitting) {
         event.preventDefault();
         mainWindow.hide();
-
-        // Create tray icon if it doesn't exist
         if (!tray) {
           const iconPath = path.join(__dirname, "assets", "icon.png");
           tray = new Tray(iconPath);
           tray.setToolTip("YouTube Music");
 
-          // Create context menu for tray icon
           const contextMenu = Menu.buildFromTemplate([
             {
               label: "Show",
@@ -68,61 +103,69 @@ if (!gotLock) {
             },
           ]);
 
-          // Add click handler for left click
           tray.on("click", () => {
             mainWindow.show();
           });
 
-          // Set the context menu
           tray.setContextMenu(contextMenu);
         }
       }
       return false;
     });
 
-    // Create custom menu
-    const menu = Menu.buildFromTemplate(template);
+    // Custom menu
+    const menu = Menu.buildFromTemplate([
+      {
+        label: "File",
+        submenu: [
+          { role: "reload" },
+          {
+            label: "Quit",
+            accelerator: process.platform === "darwin" ? "Command+Q" : "Alt+F4",
+            click: () => app.quit(),
+          },
+        ],
+      },
+      {
+        label: "Window",
+        submenu: [
+          { role: "togglefullscreen" },
+          {
+            label: "Minimize to Tray on Close",
+            type: "checkbox",
+            checked: minimizeToTray,
+            click: (menuItem) => {
+              minimizeToTray = menuItem.checked;
+            },
+          },
+        ],
+      },
+      {
+        label: "About",
+        click: () => {
+          const { shell } = require("electron");
+          shell.openExternal("https://github.com/nubsuki/YouTube-Music-Player");
+        },
+      },
+    ]);
     Menu.setApplicationMenu(menu);
+
+    // Discord Rich Presence integration
+    client.on("ready", () => {
+      console.log("Discord Rich Presence is active!");
+      setDiscordActivity();
+    });
+
+    client.login({ clientId }).catch(console.error);
+
+    // Periodically update Rich Presence
+    setInterval(async () => {
+      const { songTitle, artist } = await getCurrentSongInfo();
+      setDiscordActivity(songTitle, artist);
+    }, 15000); // Update every 15 seconds
   });
 
-  // Custom menu template
-  const template = [
-    {
-      label: "File",
-      submenu: [
-        { role: "reload" },
-        {
-          label: "Quit",
-          accelerator: process.platform === "darwin" ? "Command+Q" : "Alt+F4",
-          click: () => app.quit(),
-        },
-      ],
-    },
-    {
-      label: "Window",
-      submenu: [
-        { role: "togglefullscreen" },
-        {
-          label: "Minimize to Tray on Close",
-          type: "checkbox",
-          checked: minimizeToTray,
-          click: (menuItem) => {
-            minimizeToTray = menuItem.checked;
-          },
-        },
-      ],
-    },
-    {
-      label: "About",
-      click: () => {
-        const { shell } = require('electron');
-        shell.openExternal('https://github.com/nubsuki/YouTube-Music-Player'); // Replace with your GitHub repository URL
-      },
-    },
-  ];
-
-  // Ready event
-  app.on("before-quit", function () {
+  app.on("before-quit", () => {
     app.isQuitting = true;
   });
 }
