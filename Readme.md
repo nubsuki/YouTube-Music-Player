@@ -5,7 +5,10 @@ A simple desktop application for **YouTube Music**.
 ---
 **YouTube Music Player**
 ![YTMusic](assets/ytmp.png)
+
 **Discord Rich Presence**
+
+
 ![Rich Presence](assets/status.png)
 
 ---
