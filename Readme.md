@@ -31,11 +31,11 @@ A simple desktop application for **YouTube Music**.
    - Extract the contents of the ZIP file to a folder of your choice.
 
 3. **Run the App**:
-   - Open the folder and double-click on `youtube-music-app.exe` to launch the app.
+   - Open the folder and double-click on `YouTube Music.exe` to launch the app.
 
 4. **Create a Desktop Icon** (Optional but Recommended):
    - To easily access the app, create a shortcut on your desktop:
-     - **Right-click** on `youtube-music-app.exe` in the folder.
+     - **Right-click** on `YouTube Music.exe` in the folder.
      - Select **Send to > Desktop (create shortcut)**.
      - Now you can quickly launch the app directly from your desktop.
 
