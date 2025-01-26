@@ -5,9 +5,9 @@ A simple desktop application for **YouTube Music**.
 ![YTMusic](assets/ytmp.png)
 ## Features
 
-- 🎵 **Desktop YouTube Music**: A dedicated YouTube Music app with no distractions.
-- 🔄 **Minimize to Tray**: Close the app window to minimize it to the system tray.
-
+- **Desktop YouTube Music**: A dedicated YouTube Music app with no distractions.
+- **Minimize to Tray**: Close the app window to minimize it to the system tray.
+- **Dicord Rich Presence**: Sets Discord Profile status to current song that plays.
 ---
 
 ## Get Started
@@ -30,6 +30,27 @@ A simple desktop application for **YouTube Music**.
      - Now you can quickly launch the app directly from your desktop.
 
 That's it! 🎉 Enjoy your YouTube Music experience on the desktop.
+
+---
+
+## Discord Rich Presence
+
+If you want **Discord Rich Presence**, you have to create an application on the [Discord Developer Portal](https://discord.com/developers/applications):
+
+1. Go to the Discord Developer Portal and create a new application.
+2. Give your application a name, then go to **Rich Presence**.
+3. Add an image (icon.png or icon.gif), either a PNG or GIF. You can find the given image in `YouTube Muisc App/resources/app/assets` (it should be a PNG).
+4. Go to **OAuth2**, copy the **Client ID**, and paste it into `config.json` in `YouTube Muisc App/resources/app`.
+
+For example:
+
+```json
+{
+    "clientId": "1232432411312314"
+}
+```
+
+That’s it!
 
 ---
 

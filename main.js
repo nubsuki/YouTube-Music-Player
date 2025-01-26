@@ -1,5 +1,6 @@
-const { app, BrowserWindow, Menu, Tray } = require("electron");
+const fs = require("fs");
 const path = require("path");
+const { app, BrowserWindow, Menu, Tray } = require("electron");
 const rpc = require("discord-rpc");
 
 let mainWindow;
@@ -7,7 +8,9 @@ let tray = null;
 let minimizeToTray = true;
 
 // Discord Rich Presence setup
-const clientId = "1#################";
+// Read clientId from config.json
+const config = JSON.parse(fs.readFileSync(path.join(__dirname, 'config.json')));
+const clientId = config.clientId;
 rpc.register(clientId);
 const client = new rpc.Client({ transport: "ipc" });
 
