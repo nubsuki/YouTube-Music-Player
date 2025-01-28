@@ -1,11 +1,10 @@
 {
   "name": "youtube-music",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "main": "main.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
     "start": "electron .",
-    "pack": "electron-packager . youtube-music-app --platform=win32 --arch=x64 --icon=assets/icon.ico --out=dist --overwrite"
+    "build": "electron-builder"
   },
   "keywords": [],
   "author": "nubsuki",
@@ -13,9 +12,35 @@
   "description": "YouTube Music Player",
   "devDependencies": {
     "electron": "^34.0.1",
-    "electron-packager": "^17.1.2"
+    "electron-builder": "^24.6.4"
   },
   "dependencies": {
     "discord-rpc": "^4.0.1"
+  },
+  "build": {
+    "appId": "com.nubsuki.youtubemusic",
+    "productName": "YouTube Music",
+    "asar": true,
+    "asarUnpack": [
+      "config.json",
+      "node_modules/discord-rpc"
+    ],
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "**/*",
+      "node_modules/discord-rpc/**/*"
+    ],
+    "win": {
+      "target": "nsis",
+      "icon": "assets/icon.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "shortcutName": "YouTube Music"
+    }
   }
 }
