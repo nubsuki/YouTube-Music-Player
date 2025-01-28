@@ -18,6 +18,7 @@ A simple desktop application for **YouTube Music**.
 - **Desktop YouTube Music**: A dedicated YouTube Music app with no distractions.
 - **Minimize to Tray**: Close the app window to minimize it to the system tray.
 - **Dicord Rich Presence**: Sets Discord Profile status to current song that plays.
+- **Upcoming WebSocket Integration**: A future update will implement WebSocket functionality, allowing users to use Discord Rich Presence without needing additional setup.
 ---
 
 ## Get Started
