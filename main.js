@@ -146,7 +146,7 @@ if (!gotLock) {
             accelerator: process.platform === "darwin" ? "Command+Q" : "Alt+F4",
             click: () => {
               appIsQuitting = true;
-              app.quit();
+              app.exit();
             },
           },
         ],
@@ -194,11 +194,20 @@ if (!gotLock) {
     }, 15000); // Update every 15 seconds
   });
 
-  app.on("before-quit", () => {
+  app.on("before-quit", async () => {
     appIsQuitting = true;
     clearInterval(presenceUpdateInterval); // Clear the interval
     if (tray) {
       tray.destroy(); // Destroy the tray icon
+    }
+  
+    // Pause music before quitting
+    try {
+      await mainWindow.webContents.executeJavaScript(
+        `document.querySelector('video').pause()`
+      );
+    } catch (error) {
+      console.error("Error pausing music:", error);
     }
   });
 }
