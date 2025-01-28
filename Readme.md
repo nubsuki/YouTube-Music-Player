@@ -24,33 +24,32 @@ A simple desktop application for **YouTube Music**.
 
 ### How to Use:
 
-1. **Download the ZIP**:
-   - Go to the [Releases](https://github.com/nubsuki/YouTube-Music-Player/releases) page and download the latest version of the app (ZIP file).
+1. **Download the Installer**:
+   - Visit the [Releases](https://github.com/nubsuki/YouTube-Music-Player/releases) page and download the latest version of the app installer: `YouTube Music Setup.exe`.
 
-2. **Unzip the File**:
-   - Extract the contents of the ZIP file to a folder of your choice.
+2. **Install the Application**:
+   - Run the setup file and follow the on-screen instructions to install the app.
 
-3. **Run the App**:
-   - Open the folder and double-click on `YouTube Music.exe` to launch the app.
-
-4. **Create a Desktop Icon** (Optional but Recommended):
-   - To easily access the app, create a shortcut on your desktop:
-     - **Right-click** on `YouTube Music.exe` in the folder.
-     - Select **Send to > Desktop (create shortcut)**.
-     - Now you can quickly launch the app directly from your desktop.
-
-That's it! 🎉 Enjoy your YouTube Music experience on the desktop.
+3. **Launch the App**:
+   - Once installed, you can start the app and enjoy YouTube Music on your desktop! 🎉
 
 ---
 
-## Discord Rich Presence
+## Discord Rich Presence Setup
 
-If you want **Discord Rich Presence**, you have to create an application on the [Discord Developer Portal](https://discord.com/developers/applications):
+To enable **Discord Rich Presence**, follow these steps:
 
-1. Go to the Discord Developer Portal and create a new application.
-2. Give your application a name, then go to **Rich Presence**.
-3. Add an image (icon.png or icon.gif), either a PNG or GIF. You can find the given image in `YouTube Muisc App/resources/app/assets` (it should be a PNG).
-4. Go to **OAuth2**, copy the **Client ID**, and paste it into `config.json` in `YouTube Muisc App/resources/app`.
+1. **Create an Application on the Discord Developer Portal**:
+   - Go to the [Discord Developer Portal](https://discord.com/developers/applications) and create a new application.
+
+2. **Set Up Rich Presence**:
+   - Give your application a name, then navigate to the **Rich Presence** section.
+   - Upload an icon for your app (in PNG format).
+
+3. **Get Your Client ID**:
+   - Go to the **OAuth2** section and copy the **Client ID**.
+   - Open the `config.json` file located in the installed directory: `YouTube Music\resources\app.asar.unpacked\config.json`.
+   - Paste your **Client ID** into the `clientId` field.
 
 For example:
 
@@ -60,13 +59,8 @@ For example:
 }
 ```
 
-That’s it!
-
----
-
-## Known Issues
-
-- **Pause Music Before Closing**: If you don't pause the music before quitting the app, it may continue playing in the background. To avoid this, make sure to pause your music before exiting the app.
+4. **Save and Restart**:
+   - Save the changes and restart the app. Your Discord profile should now show the current song playing!
 
 ---
 
