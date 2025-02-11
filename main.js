@@ -54,16 +54,27 @@ function setDiscordActivity(songTitle = "Loading Song", artist = "Loading Artist
 // Fetch song info from YouTube Music
 async function getCurrentSongInfo() {
   try {
+    // Fetch song title and artist
     const songTitle = await mainWindow.webContents.executeJavaScript(
       `document.querySelector('.title.ytmusic-player-bar')?.textContent.trim() || 'Loading Song'`
     );
     const artist = await mainWindow.webContents.executeJavaScript(
       `document.querySelector('.byline.ytmusic-player-bar')?.textContent.trim() || 'Loading Artist'`
     );
-    // Fetch the current song URL
-    const songUrl = await mainWindow.webContents.executeJavaScript(
-      `window.location.href`
-    );
+
+    const qartist = await mainWindow.webContents.executeJavaScript(`
+      (() => {
+        const byline = document.querySelector('.byline.ytmusic-player-bar')?.textContent.trim();
+        if (!byline) return 'Loading Artist';
+        // Split the text by '•' and take the first part
+        return byline.split('•')[0].trim() || 'Loading Artist';
+      })();
+    `);
+    
+    // Construct the search query URL
+    const query = encodeURIComponent(`${songTitle} by ${qartist}`);
+    const songUrl = `https://music.youtube.com/search?q=${query}`;
+
     return { songTitle, artist, songUrl};
   } catch (error) {
     console.error("Error fetching song info:", error);
