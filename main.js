@@ -25,7 +25,7 @@ rpc.register(clientId);
 const client = new rpc.Client({ transport: "ipc" });
 
 // Function to set Discord Rich Presence activity
-function setDiscordActivity(songTitle = "Loading Song", artist = "Loading Artist") {
+function setDiscordActivity(songTitle = "Loading Song", artist = "Loading Artist", songUrl = "") {
   if (!client) return;
 
   client
@@ -35,6 +35,16 @@ function setDiscordActivity(songTitle = "Loading Song", artist = "Loading Artist
       largeImageKey: "icon",
       largeImageText: "YouTube Music",
       instance: false,
+      buttons: [
+        {
+          label: "Listen on YouTube Music",
+          url: songUrl || "https://music.youtube.com",
+        },
+        {
+          label: "View on GitHub",
+          url: "https://github.com/nubsuki/YouTube-Music-Player",
+        },
+      ],
     })
     .catch((error) => {
       console.error("Error setting Discord activity:", error);
@@ -50,7 +60,11 @@ async function getCurrentSongInfo() {
     const artist = await mainWindow.webContents.executeJavaScript(
       `document.querySelector('.byline.ytmusic-player-bar')?.textContent.trim() || 'Loading Artist'`
     );
-    return { songTitle, artist };
+    // Fetch the current song URL
+    const songUrl = await mainWindow.webContents.executeJavaScript(
+      `window.location.href`
+    );
+    return { songTitle, artist, songUrl};
   } catch (error) {
     console.error("Error fetching song info:", error);
     return { songTitle: "Loading Song", artist: "Loading Artist" };
@@ -189,9 +203,9 @@ if (!gotLock) {
 
     // Periodically update Rich Presence
     presenceUpdateInterval = setInterval(async () => {
-      const { songTitle, artist } = await getCurrentSongInfo();
-      setDiscordActivity(songTitle, artist);
-    }, 15000); // Update every 15 seconds
+      const { songTitle, artist, songUrl } = await getCurrentSongInfo();
+      setDiscordActivity(songTitle, artist, songUrl);
+    }, 12000); // Update every 12 seconds
   });
 
   app.on("before-quit", async () => {
