@@ -18,7 +18,7 @@ A simple desktop application for **YouTube Music**.
 - **Desktop YouTube Music**: A dedicated YouTube Music app with no distractions.
 - **Minimize to Tray**: Close the app window to minimize it to the system tray.
 - **Dicord Rich Presence**: Sets Discord Profile status to current song that plays.
-- **Upcoming WebSocket Integration**: A future update will implement WebSocket functionality, allowing users to use Discord Rich Presence without needing additional setup.(Maybe)
+- **Listen on YouTube**: Other users who see your profile status can search for the current song by pressing **"Listen on YouTube"**. 
 ---
 
 ## Get Started
@@ -35,37 +35,14 @@ A simple desktop application for **YouTube Music**.
    - Once installed, you can start the app and enjoy YouTube Music on your desktop! 🎉
 
 ---
+## Known Issues  
 
-## Discord Rich Presence Setup
-
-To enable **Discord Rich Presence**, follow these steps:
-
-1. **Create an Application on the Discord Developer Portal**:
-   - Go to the [Discord Developer Portal](https://discord.com/developers/applications) and create a new application.
-
-2. **Set Up Rich Presence**:
-   - Give your application a name, then navigate to the **Rich Presence** section.
-   - Upload an icon for your app (in PNG format).
-
-3. **Get Your Client ID**:
-   - Go to the **OAuth2** section and copy the **Client ID**.
-   - Open the `config.json` file located in the installed directory: `YouTube Music\resources\app.asar.unpacked\config.json`.
-   - Paste your **Client ID** into the `clientId` field.
-
-For example:
-
-```json
-{
-    "clientId": "1232432411312314"
-}
-```
-
-4. **Save and Restart**:
-   - Save the changes and restart the app. Your Discord profile should now show the current song playing!
-
+- **Discord Rich Presence not updating?**  
+  - Restart the application if you don’t see your profile status updating.  
+  - Make sure **Discord is open before** launching the app so it can connect properly.  
 ---
 
 ## License
-This project is for personal use and is distributed "as-is".
+  - This software is provided "as-is" without any warranties or guarantees. It is for personal use only and is licensed under the [Apache License 2.0](https://www.apache.org/licenses/LICENSE-2.0).
 
 ---
