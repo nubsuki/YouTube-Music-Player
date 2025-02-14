@@ -15,7 +15,8 @@
     "electron-builder": "^24.6.4"
   },
   "dependencies": {
-    "discord-rpc": "^4.0.1"
+    "discord-rpc": "^4.0.1",
+    "ps-list": "^8.1.1"
   },
   "build": {
     "appId": "com.nubsuki.youtubemusic",

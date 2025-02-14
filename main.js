@@ -7,7 +7,6 @@ let mainWindow;
 let tray = null;
 let minimizeToTray = true;
 let appIsQuitting = false; // Initialize app quitting state
-let presenceUpdateInterval; // Interval for updating Discord Rich Presence
 
 // Read config.json with error handling
 let config;
@@ -24,13 +23,16 @@ const clientId = config.clientId;
 rpc.register(clientId);
 const client = new rpc.Client({ transport: "ipc" });
 
+let isConnected = false;
+let presenceUpdateInterval; // Interval for updating Discord Rich Presence
+
 // Function to set Discord Rich Presence activity
 function setDiscordActivity(songTitle = "Loading Song", artist = "Loading Artist", songUrl = "", albumArtUrl = "") {
   if (!client) return;
 
   client
     .setActivity({
-      details: `Listening to ${songTitle}`,
+      details: `${songTitle}`,
       state: `by ${artist}`,
       largeImageKey: albumArtUrl || "icon",
       largeImageText: "YouTube Music",
@@ -41,7 +43,7 @@ function setDiscordActivity(songTitle = "Loading Song", artist = "Loading Artist
           url: songUrl || "https://music.youtube.com",
         },
         {
-          label: "View on GitHub",
+          label: "Get App",
           url: "https://github.com/nubsuki/YouTube-Music-Player",
         },
       ],
@@ -88,6 +90,75 @@ async function getCurrentSongInfo() {
     console.error("Error fetching song info:", error);
     return { songTitle: "Loading Song", artist: "Loading Artist",  albumArtUrl: "" };
   }
+}
+
+// Connect to Discord
+async function connectToDiscord() {
+  try {
+    await client.login({ clientId });
+    console.log("Successfully connected to Discord!");
+    isConnected = true;
+
+    // Set initial activity
+    setDiscordActivity();
+
+    // Periodically update Rich Presence
+    presenceUpdateInterval = setInterval(async () => {
+      const { songTitle, artist, songUrl, albumArtUrl } = await getCurrentSongInfo();
+      setDiscordActivity(songTitle, artist, songUrl, albumArtUrl);
+    }, 12000); // Update every 12 seconds
+  } catch (error) {
+    console.error("Failed to connect to Discord:", error.message);
+
+    // Retry connection after 10 seconds
+    if (!isConnected) {
+      setTimeout(connectToDiscord, 10000);
+    }
+  }
+}
+
+client.on("error", (error) => {
+  console.error("Discord RPC Error:", error);
+});
+
+// Handle disconnections
+client.on("disconnected", () => {
+  console.warn("Disconnected from Discord. Attempting to reconnect...");
+  isConnected = false;
+  setTimeout(waitForDiscord, 5000);
+});
+
+// Dynamically import ps-list
+let psList;
+const loadPsList = async () => {
+  psList = await import("ps-list");
+};
+
+
+// Check if Discord is running
+async function isDiscordRunning() {
+  const processes = await psList.default(); 
+  return processes.some((process) => process.name.toLowerCase().includes("discord"));
+}
+
+// Wait for Discord to start
+async function waitForDiscord() {
+  if (!psList) {
+    await loadPsList(); // Ensure psList is loaded
+  }
+
+  // Wait for Discord to start
+  while (!(await isDiscordRunning())) {
+    console.log("Waiting for Discord to start...");
+    await new Promise((resolve) => setTimeout(resolve, 5000)); // Check every 5 seconds
+  }
+
+  // Wait for 30 seconds before attempting to connect
+  console.log("Discord detected! Waiting 30 seconds before connecting...");
+  await new Promise((resolve) => setTimeout(resolve, 30000));
+
+  console.log("Attempting to connect to Discord...");
+  connectToDiscord(); // Attempt to connect after the delay
 }
 
 // Request a single instance lock
@@ -164,8 +235,11 @@ if (!gotLock) {
             console.error("Tray icon not found at path:", iconPath);
           }
         }
-      }
-      return false;
+      }else {
+        // If minimizeToTray is false, allow the app to quit
+        appIsQuitting = true;
+        app.quit();
+      }return false;
     });
 
     // Custom menu
@@ -192,9 +266,8 @@ if (!gotLock) {
             label: "Minimize to Tray on Close",
             type: "checkbox",
             checked: minimizeToTray,
-            click: (menuItem) => {
-              minimizeToTray = menuItem.checked;
-            },
+            checked: true,
+            enabled: false,
           },
         ],
       },
@@ -208,23 +281,8 @@ if (!gotLock) {
     ]);
     Menu.setApplicationMenu(menu);
 
-    // Discord Rich Presence integration
-    client.on("ready", () => {
-      console.log("Discord Rich Presence is active!");
-      setDiscordActivity();
-    });
-
-    client.on("error", (error) => {
-      console.error("Discord RPC Error:", error);
-    });
-
-    client.login({ clientId }).catch(console.error);
-
-    // Periodically update Rich Presence
-    presenceUpdateInterval = setInterval(async () => {
-      const { songTitle, artist, songUrl, albumArtUrl} = await getCurrentSongInfo();
-      setDiscordActivity(songTitle, artist, songUrl, albumArtUrl);
-    }, 12000); // Update every 12 seconds
+    // Start monitoring for Discord
+    waitForDiscord();
   });
 
   app.on("before-quit", async () => {
