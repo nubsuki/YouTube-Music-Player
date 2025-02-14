@@ -25,14 +25,14 @@ rpc.register(clientId);
 const client = new rpc.Client({ transport: "ipc" });
 
 // Function to set Discord Rich Presence activity
-function setDiscordActivity(songTitle = "Loading Song", artist = "Loading Artist", songUrl = "") {
+function setDiscordActivity(songTitle = "Loading Song", artist = "Loading Artist", songUrl = "", albumArtUrl = "") {
   if (!client) return;
 
   client
     .setActivity({
       details: `Listening to ${songTitle}`,
       state: `by ${artist}`,
-      largeImageKey: "icon",
+      largeImageKey: albumArtUrl || "icon",
       largeImageText: "YouTube Music",
       instance: false,
       buttons: [
@@ -75,10 +75,18 @@ async function getCurrentSongInfo() {
     const query = encodeURIComponent(`${songTitle} by ${qartist}`);
     const songUrl = `https://music.youtube.com/search?q=${query}`;
 
-    return { songTitle, artist, songUrl};
+    // Fetch the album art URL
+    const albumArtUrl = await mainWindow.webContents.executeJavaScript(`
+      (() => {
+        const imgElement = document.querySelector('.image.style-scope.ytmusic-player-bar');
+        return imgElement ? imgElement.src : '';
+      })();
+    `);
+
+    return { songTitle, artist, songUrl, albumArtUrl};
   } catch (error) {
     console.error("Error fetching song info:", error);
-    return { songTitle: "Loading Song", artist: "Loading Artist" };
+    return { songTitle: "Loading Song", artist: "Loading Artist",  albumArtUrl: "" };
   }
 }
 
@@ -214,8 +222,8 @@ if (!gotLock) {
 
     // Periodically update Rich Presence
     presenceUpdateInterval = setInterval(async () => {
-      const { songTitle, artist, songUrl } = await getCurrentSongInfo();
-      setDiscordActivity(songTitle, artist, songUrl);
+      const { songTitle, artist, songUrl, albumArtUrl} = await getCurrentSongInfo();
+      setDiscordActivity(songTitle, artist, songUrl, albumArtUrl);
     }, 12000); // Update every 12 seconds
   });
 
