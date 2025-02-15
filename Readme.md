@@ -8,8 +8,10 @@ A simple desktop application for **YouTube Music**.
 ![YTMusic](assets/ytmp.png)
 
 **Discord Rich Presence**
-
-![Rich Presence](assets/status.png)
+- **Your Profile Status Preview:**
+![Rich Presence](assets/pstatus.png)
+- **How Others See Your Status:**
+![Rich Presence](assets/ostatus.png)
 
 ---
 
@@ -34,12 +36,6 @@ A simple desktop application for **YouTube Music**.
 3. **Launch the App**:
    - Once installed, you can start the app and enjoy YouTube Music on your desktop! 🎉
 
----
-## Known Issues  
-
-- **Discord Rich Presence not updating?**  
-  - Restart the application if you don’t see your profile status updating.  
-  - Make sure **Discord is open before** launching the app so it can connect properly.  
 ---
 
 ## License
