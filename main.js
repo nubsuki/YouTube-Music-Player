@@ -2,6 +2,7 @@ const fs = require("fs");
 const path = require("path");
 const { app, BrowserWindow, Menu, Tray } = require("electron");
 const rpc = require("discord-rpc");
+const si = require("systeminformation");
 
 let mainWindow;
 let tray = null;
@@ -21,7 +22,7 @@ const clientId = config.clientId;
 
 // Discord Rich Presence setup
 rpc.register(clientId);
-const client = new rpc.Client({ transport: "ipc" });
+let client = new rpc.Client({ transport: "ipc" });
 
 let isConnected = false;
 let presenceUpdateInterval; // Interval for updating Discord Rich Presence
@@ -95,18 +96,45 @@ async function getCurrentSongInfo() {
 // Connect to Discord
 async function connectToDiscord() {
   try {
+    // Properly destroy old client if it exists and is connected
+    if (client) {
+      try {
+        await client.destroy();
+        console.log("Destroyed old Discord client session.");
+      } catch (error) {
+        console.warn("Error destroying old client (might already be destroyed):", error.message);
+      }
+    }
+
+    // Create a new client instance
+    client = new rpc.Client({ transport: "ipc" });
+
+    client.on("ready", () => {
+      console.log("Successfully connected to Discord!");
+      isConnected = true;
+
+      // Set initial activity
+      setDiscordActivity();
+
+      // Periodically update Rich Presence
+      presenceUpdateInterval = setInterval(async () => {
+        const { songTitle, artist, songUrl, albumArtUrl } = await getCurrentSongInfo();
+        setDiscordActivity(songTitle, artist, songUrl, albumArtUrl);
+      }, 12000);
+    });
+
+    client.on("error", (error) => {
+      console.error("Discord RPC Error:", error.message);
+      handleDiscordDisconnect();
+    });
+
+    client.on("disconnected", () => {
+      console.warn("Disconnected from Discord. Attempting to reconnect...");
+      handleDiscordDisconnect();
+    });
+
+    // Attempt to login
     await client.login({ clientId });
-    console.log("Successfully connected to Discord!");
-    isConnected = true;
-
-    // Set initial activity
-    setDiscordActivity();
-
-    // Periodically update Rich Presence
-    presenceUpdateInterval = setInterval(async () => {
-      const { songTitle, artist, songUrl, albumArtUrl } = await getCurrentSongInfo();
-      setDiscordActivity(songTitle, artist, songUrl, albumArtUrl);
-    }, 12000); // Update every 12 seconds
   } catch (error) {
     console.error("Failed to connect to Discord:", error.message);
 
@@ -117,36 +145,33 @@ async function connectToDiscord() {
   }
 }
 
-client.on("error", (error) => {
-  console.error("Discord RPC Error:", error);
-});
-
-// Handle disconnections
-client.on("disconnected", () => {
-  console.warn("Disconnected from Discord. Attempting to reconnect...");
+// Handle disconnections and clean up properly
+function handleDiscordDisconnect() {
   isConnected = false;
-  setTimeout(waitForDiscord, 5000);
-});
 
-// Dynamically import ps-list
-let psList;
-const loadPsList = async () => {
-  psList = await import("ps-list");
-};
+  if (client) {
+    client.clearActivity().catch((error) => console.error("Error clearing activity:", error.message));
+    client.destroy().catch((error) => console.error("Error destroying client:", error.message));
+  }
+
+  client = null; // Reset client to ensure a fresh connection next time
+  setTimeout(waitForDiscord, 5000);
+}
 
 
 // Check if Discord is running
 async function isDiscordRunning() {
-  const processes = await psList.default(); 
-  return processes.some((process) => process.name.toLowerCase().includes("discord"));
+  try {
+    const processes = await si.processes();
+    return processes.list.some((process) => process.name.toLowerCase().includes("discord"));
+  } catch (error) {
+    console.error("Error checking processes:", error);
+    return false;
+  }
 }
 
 // Wait for Discord to start
 async function waitForDiscord() {
-  if (!psList) {
-    await loadPsList(); // Ensure psList is loaded
-  }
-
   // Wait for Discord to start
   while (!(await isDiscordRunning())) {
     console.log("Waiting for Discord to start...");
