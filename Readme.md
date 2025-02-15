@@ -9,8 +9,10 @@ A simple desktop application for **YouTube Music**.
 
 **Discord Rich Presence**
 - **Your Profile Status Preview:**
+
 ![Rich Presence](assets/pstatus.png)
 - **How Others See Your Status:**
+
 ![Rich Presence](assets/ostatus.png)
 
 ---
