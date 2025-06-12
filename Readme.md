@@ -32,6 +32,7 @@ A simple desktop application for **YouTube Music**.
 - **Minimize to Tray**: Close the app window to minimize it to the system tray.
 - **Dicord Rich Presence**: Sets Discord Profile status to current song that plays.
 - **Listen on YouTube**: Other users who see your profile status can search for the current song by pressing **"Listen on YouTube"**. 
+- **YouTube Ad Blocker**: Blocks YouTube ads inside the app with a handy toggle to turn it on/off.
 ---
 
 ## Get Started
@@ -49,6 +50,11 @@ A simple desktop application for **YouTube Music**.
 
 ### Linux
 - Make sure fuse2 is installed
+- **Discord Rich Presence** might not work perfectly on all systems.
+
+> ### Notes
+> **Worried about account bans due to ad blocking?**
+> Use a **burner account/email** or **just don't tun on**, or stick with **v1.4.0** — that version doesn’t include any ad-blocker functionality.
 ---
 
 ## License
