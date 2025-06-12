@@ -43,6 +43,9 @@ A simple desktop application for **YouTube Music**.
 ---
 
 ## License
-  - This software is provided "as-is" without any warranties or guarantees. It is for personal use only and is licensed under the [Apache License 2.0](https://www.apache.org/licenses/LICENSE-2.0).
+- This software is provided "as-is" without any warranties or guarantees. 
+- It is for personal use only.
+- licensed under the [Apache License 2.0](https://www.apache.org/licenses/LICENSE-2.0)
+- adblocker-electron [`@ghostery/adblocker-electron`](https://github.com/cliqz-oss/adblocker)
 
 ---
