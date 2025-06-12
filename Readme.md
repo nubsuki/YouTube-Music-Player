@@ -38,6 +38,8 @@ A simple desktop application for **YouTube Music**.
 3. **Launch the App**:
    - Once installed, you can start the app and enjoy YouTube Music on your desktop! 🎉
 
+### Linux
+- Make sure fuse2 is installed
 ---
 
 ## License
