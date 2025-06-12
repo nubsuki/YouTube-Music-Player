@@ -7,7 +7,10 @@
     "build": "electron-builder"
   },
   "keywords": [],
-  "author": "nubsuki",
+  "author": {
+    "name": "nubsuki",
+    "email": "nubsuki@proton.me"
+  },
   "license": "ISC",
   "description": "YouTube Music Player",
   "devDependencies": {
@@ -37,6 +40,12 @@
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
       "shortcutName": "YouTube Music"
+    },
+    "linux": {
+      "maintainer": "nubsuki <nubsuki@proton.me>",
+      "target": ["AppImage", "deb"],
+      "icon": "assets/icon.png",
+      "category": "Audio"
     }
   }
 }
