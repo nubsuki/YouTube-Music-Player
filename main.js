@@ -4,6 +4,10 @@ const { app, BrowserWindow, Menu, Tray } = require("electron");
 const rpc = require("discord-rpc");
 const si = require("systeminformation");
 
+//ad Blocker
+const { ElectronBlocker, fullLists, Request } = require('@ghostery/adblocker-electron');
+const fetch = require('cross-fetch');
+
 let mainWindow;
 let tray = null;
 let minimizeToTray = true;
@@ -221,6 +225,15 @@ if (!gotLock) {
         process.platform === "win32" ? "icon.ico" : "icon.icns"
       ),
     });
+
+    //ad Blocker code block
+    ElectronBlocker.fromPrebuiltAdsAndTracking(fetch).then((blocker) => {
+      blocker.enableBlockingInSession(mainWindow.webContents.session);
+      blocker.on('request-blocked', (request) => {
+        console.log('Blocked:', request.url);
+      });
+    });
+
 
     mainWindow.loadURL("https://music.youtube.com");
 

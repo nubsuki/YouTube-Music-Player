@@ -18,6 +18,8 @@
     "electron-builder": "^24.6.4"
   },
   "dependencies": {
+    "@ghostery/adblocker-electron": "^2.7.0",
+    "cross-fetch": "^4.1.0",
     "discord-rpc": "^4.0.1",
     "systeminformation": "^5.25.11"
   },
@@ -43,7 +45,10 @@
     },
     "linux": {
       "maintainer": "nubsuki <nubsuki@proton.me>",
-      "target": ["AppImage", "deb"],
+      "target": [
+        "AppImage",
+        "deb"
+      ],
       "icon": "assets/icon.png",
       "category": "Audio"
     }
