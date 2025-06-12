@@ -4,11 +4,12 @@ A simple desktop application for **YouTube Music**.
 
 #### STATS
 
-![Windows Available](https://img.shields.io/badge/Windows-Available-brightgreen)  
-![Linux Available](https://img.shields.io/badge/Linux-Available-brightgreen)  
+[![Windows Available](https://img.shields.io/badge/Windows-Available-brightgreen)](https://github.com/nubsuki/YouTube-Music-Player/releases)  
+[![Linux Available](https://img.shields.io/badge/Linux-Available-brightgreen)](https://github.com/nubsuki/YouTube-Music-Player/releases)  
 
-![GitHub release](https://img.shields.io/github/v/release/nubsuki/YouTube-Music-Player)  
-![GitHub release downloads](https://img.shields.io/github/downloads/nubsuki/YouTube-Music-Player/total)
+[![GitHub release](https://img.shields.io/github/v/release/nubsuki/YouTube-Music-Player)](https://github.com/nubsuki/YouTube-Music-Player/releases)  
+[![GitHub release downloads](https://img.shields.io/github/downloads/nubsuki/YouTube-Music-Player/total)](https://github.com/nubsuki/YouTube-Music-Player/releases)
+
 
 ---
 **YouTube Music Player**
