@@ -7,6 +7,8 @@ const si = require("systeminformation");
 //ad Blocker
 const { ElectronBlocker, fullLists, Request } = require('@ghostery/adblocker-electron');
 const fetch = require('cross-fetch');
+let blocked = false;
+let blocker = null;
 
 let mainWindow;
 let tray = null;
@@ -227,12 +229,32 @@ if (!gotLock) {
     });
 
     //ad Blocker code block
-    ElectronBlocker.fromPrebuiltAdsAndTracking(fetch).then((blocker) => {
-      blocker.enableBlockingInSession(mainWindow.webContents.session);
-      blocker.on('request-blocked', (request) => {
-        console.log('Blocked:', request.url);
-      });
-    });
+    function adblock() {
+      if (blocked) {
+        if (!blocker) {
+          // Create and enable only once
+          ElectronBlocker.fromPrebuiltAdsAndTracking(fetch).then((createdBlocker) => {
+            blocker = createdBlocker;
+            blocker.enableBlockingInSession(mainWindow.webContents.session);
+            
+            blocker.on("request-blocked", (request) => {
+              console.log("Blocked:", request.url);
+            });
+
+            console.log("Ad blocker enabled");
+          }).catch((err) => {
+            console.error("Failed to enable ad blocker:", err);
+          });
+        } else {
+          // Blocker already exists, just re-enable it (if needed)
+          blocker.enableBlockingInSession(mainWindow.webContents.session);
+          console.log("Ad blocker re-enabled");
+        }
+      } else if (blocker) {
+        blocker.disableBlockingInSession(mainWindow.webContents.session);
+        console.log("Ad blocker disabled");
+      }
+    }
 
 
     mainWindow.loadURL("https://music.youtube.com");
@@ -283,9 +305,35 @@ if (!gotLock) {
     // Custom menu
     const menu = Menu.buildFromTemplate([
       {
-        label: "File",
+        label: "App",
         submenu: [
+          { role: "togglefullscreen" },
           { role: "reload" },
+          { type: "separator" },
+          {
+            label: "Ad Blocker",
+            type: "checkbox",
+            checked: blocked,
+            click: (menuItem) => {
+              blocked = menuItem.checked;
+              adblock();
+            },
+          },
+          {
+            label: "Minimize to Tray on Close",
+            type: "checkbox",
+            checked: minimizeToTray,
+            checked: true,
+            enabled: false,
+          },
+          { type: "separator" },
+          {
+            label: "About",
+            click: () => {
+              const { shell } = require("electron");
+              shell.openExternal("https://github.com/nubsuki/YouTube-Music-Player");
+            },
+          },
           {
             label: "Quit",
             accelerator: process.platform === "darwin" ? "Command+Q" : "Alt+F4",
@@ -295,26 +343,6 @@ if (!gotLock) {
             },
           },
         ],
-      },
-      {
-        label: "Window",
-        submenu: [
-          { role: "togglefullscreen" },
-          {
-            label: "Minimize to Tray on Close",
-            type: "checkbox",
-            checked: minimizeToTray,
-            checked: true,
-            enabled: false,
-          },
-        ],
-      },
-      {
-        label: "About",
-        click: () => {
-          const { shell } = require("electron");
-          shell.openExternal("https://github.com/nubsuki/YouTube-Music-Player");
-        },
       },
     ]);
     Menu.setApplicationMenu(menu);
