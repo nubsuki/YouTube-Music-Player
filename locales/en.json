@@ -1,0 +1,12 @@
+{
+    "app_menu": "App",
+    "toggle_fullscreen": "Toggle Fullscreen",
+    "reload": "Reload",
+    "ad_blocker": "Ad Blocker",
+    "minimize_to_tray": "Minimize to Tray on Close",
+    "about": "About",
+    "quit": "Quit",
+    "tray_show": "Show",
+    "tray_exit": "Exit",
+    "tray_tooltip": "YouTube Music"
+  }

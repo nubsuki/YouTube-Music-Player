@@ -4,6 +4,10 @@ const { app, BrowserWindow, Menu, Tray } = require("electron");
 const rpc = require("discord-rpc");
 const si = require("systeminformation");
 
+// multilanguage
+const i18n = require("./i18n.js");
+let t;
+
 //ad Blocker
 const { ElectronBlocker, fullLists, Request } = require('@ghostery/adblocker-electron');
 const fetch = require('cross-fetch');
@@ -211,6 +215,9 @@ if (!gotLock) {
   });
 
   app.on("ready", () => {
+    const appLocale = app.getLocale();
+    t = i18n.getTranslator(appLocale);
+
     mainWindow = new BrowserWindow({
       width: 1200,
       height: 800,
@@ -272,13 +279,13 @@ if (!gotLock) {
 
             const contextMenu = Menu.buildFromTemplate([
               {
-                label: "Show",
+                label: t("tray_show"),
                 click: () => {
                   mainWindow.show();
                 },
               },
               {
-                label: "Exit",
+                label: t("tray_exit"),
                 click: () => {
                   appIsQuitting = true;
                   app.quit();
@@ -305,13 +312,13 @@ if (!gotLock) {
     // Custom menu
     const menu = Menu.buildFromTemplate([
       {
-        label: "App",
+        label: t("app_menu"),
         submenu: [
-          { role: "togglefullscreen" },
-          { role: "reload" },
+          { role: "togglefullscreen", label: t("toggle_fullscreen") },
+          { role: "reload", label: t("reload") },
           { type: "separator" },
           {
-            label: "Ad Blocker",
+            label: t("ad_blocker"),
             type: "checkbox",
             checked: blocked,
             click: (menuItem) => {
@@ -320,7 +327,7 @@ if (!gotLock) {
             },
           },
           {
-            label: "Minimize to Tray on Close",
+            label: t("minimize_to_tray"),
             type: "checkbox",
             checked: minimizeToTray,
             checked: true,
@@ -328,14 +335,14 @@ if (!gotLock) {
           },
           { type: "separator" },
           {
-            label: "About",
+            label: t("about"),
             click: () => {
               const { shell } = require("electron");
               shell.openExternal("https://github.com/nubsuki/YouTube-Music-Player");
             },
           },
           {
-            label: "Quit",
+            label: t("quit"),
             accelerator: process.platform === "darwin" ? "Command+Q" : "Alt+F4",
             click: () => {
               appIsQuitting = true;
