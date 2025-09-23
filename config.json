@@ -1,3 +1,5 @@
 {
-    "clientId": "242342342342"
+  "clientId": "242342342342",
+  "adBlockEnabled": false,
+  "minimizeToTrayEnabled": true
 }

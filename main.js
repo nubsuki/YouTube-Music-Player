@@ -11,24 +11,57 @@ let t;
 //ad Blocker
 const { ElectronBlocker, fullLists, Request } = require('@ghostery/adblocker-electron');
 const fetch = require('cross-fetch');
-let blocked = false;
 let blocker = null;
 
 let mainWindow;
 let tray = null;
-let minimizeToTray = true;
 let appIsQuitting = false; // Initialize app quitting state
+
+// Paths to configuration files
+const defaultConfigPath = path.join(__dirname, "config.json");
+const userConfigPath = path.join(app.getPath('userData'), "config.json");
 
 // Read config.json with error handling
 let config;
 try {
-  config = JSON.parse(fs.readFileSync(path.join(__dirname, "config.json")));
+  // First, try to read the user's config file
+  if (fs.existsSync(userConfigPath)) {
+    config = JSON.parse(fs.readFileSync(userConfigPath));
+  } else {
+    // If it doesn't exist, copy the default config file to the user's folder
+    console.log("Creating config file in user data path.");
+    fs.copyFileSync(defaultConfigPath, userConfigPath);
+    config = JSON.parse(fs.readFileSync(userConfigPath));
+  }
 } catch (error) {
-  console.error("Error reading config.json:", error);
-  process.exit(1); // Exit the app if config is not available
+  console.error("Error reading or creating config.json:", error);
+  process.exit(1);
 }
 const clientId = config.clientId;
+// Initialize variables from the saved configuration
+let blocked = config.adBlockEnabled !== undefined ? config.adBlockEnabled : false;
+let minimizeToTray = config.minimizeToTrayEnabled !== undefined ? config.minimizeToTrayEnabled : true;
 
+// Function to save the current configuration to config.json
+function saveConfig() {
+  const newConfig = {
+    ...config,
+    adBlockEnabled: blocked,
+    minimizeToTrayEnabled: minimizeToTray
+  };
+
+  fs.writeFile(
+    userConfigPath,
+    JSON.stringify(newConfig, null, 2),
+    (err) => {
+      if (err) {
+        console.error("Error saving configuration:", err);
+      } else {
+        console.log("Configuration saved successfully.");
+      }
+    }
+  );
+}
 
 // Discord Rich Presence setup
 rpc.register(clientId);
@@ -261,6 +294,7 @@ if (!gotLock) {
         blocker.disableBlockingInSession(mainWindow.webContents.session);
         console.log("Ad blocker disabled");
       }
+      saveConfig();
     }
 
 
@@ -330,8 +364,10 @@ if (!gotLock) {
             label: t("minimize_to_tray"),
             type: "checkbox",
             checked: minimizeToTray,
-            checked: true,
-            enabled: false,
+            click: (menuItem) => {
+              minimizeToTray = menuItem.checked;
+              saveConfig();
+            },
           },
           { type: "separator" },
           {
