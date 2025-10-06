@@ -1,20 +1,35 @@
 {
   "name": "youtube-music-player",
-  "version": "1.6.0",
+  "version": "1.7.2",
   "description": "YouTube Music Player",
   "main": "main.js",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/nubsuki/YouTube-Music-Player"
+  },
   "scripts": {
     "start": "electron .",
     "build:all": "electron-builder --linux --win",
     "build:win": "electron-builder --win",
     "build:linux": "electron-builder --linux"
   },
-  "keywords": [],
+  "keywords": [
+    "youtube",
+    "music",
+    "player",
+    "electron",
+    "desktop",
+    "audio",
+    "streaming",
+    "youtube-music",
+    "music-player",
+    "media-player"
+  ],
   "author": {
     "name": "nubsuki",
     "email": "nubsuki@proton.me"
   },
-  "license": "ISC",
+  "license": "Apache-2.0",
   "devDependencies": {
     "electron": "^38.1.2",
     "electron-builder": "^24.6.4"
@@ -29,6 +44,11 @@
       "**/*",
       "node_modules/**/*"
     ],
+    "publish": {
+      "provider": "github",
+      "owner": "nubsuki",
+      "repo": "YouTube-Music-Player"
+    },
     "win": {
       "target": "nsis",
       "icon": "assets/icon.ico"
@@ -37,7 +57,8 @@
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
-      "shortcutName": "YouTube Music"
+      "shortcutName": "YouTube Music",
+      "artifactName": "YouTube-Music-Setup-${version}.${ext}"
     },
     "linux": {
       "maintainer": "nubsuki <nubsuki@proton.me>",
@@ -51,6 +72,7 @@
   },
   "dependencies": {
     "@gorhill/ubo-core": "^0.1.30",
+    "electron-updater": "^6.6.2",
     "node-fetch": "^3.3.2"
   }
 }
