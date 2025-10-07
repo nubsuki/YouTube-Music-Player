@@ -20,6 +20,8 @@ let videoAdSkipperEnabled = true;
 let VideoAdSkipSpeed = 2;
 let VideoAdSkipInterval = 200;
 
+let VideoDialogPauseInterval = 200;
+
 // Support for multiple languages
 const i18n = {};
 
@@ -1017,6 +1019,33 @@ async function createWindow() {
     }else{
       console.log('Video ad skipper disabled by user');
     }
+    
+    // Inject JavaScript to auto-dismiss pause dialog
+    mainWindow.webContents.executeJavaScript(`
+      (function() {
+        const checkInterval = ${VideoDialogPauseInterval};
+        console.log('Keep alive initialized (Interval: ' + checkInterval + 'ms)');
+        
+        function dismissKeepAliveDialog() {
+            try {
+                const dialog = document.querySelector('tp-yt-paper-dialog.style-scope');
+                
+                if (dialog && dialog.style.display != "none") {
+                    const confirmButton = dialog.querySelector('yt-button-renderer.ytmusic-you-there-renderer');
+                    
+                    if (confirmButton) {
+                        confirmButton.click();
+                    }
+                }
+            } catch (e) {
+            }
+        }
+        
+        setInterval(dismissKeepAliveDialog, checkInterval);
+    })();
+    `);
+    console.log('Keep alive feature injected');
+
     console.log('Cast buttons hidden');
   });
 }
