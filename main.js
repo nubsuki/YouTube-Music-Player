@@ -648,8 +648,8 @@ function createMenu() {
                 const updateResult = await dialog.showMessageBox(mainWindow, {
                   type: 'question',
                   title: t('update_available'),
-                  message: `A new version (${result.updateInfo.version}) is available. Would you like to download it now?`,
-                  buttons: ['Download Now', 'Not Now'],
+                  message: t('a_new_version_q', result.updateInfo.version),
+                  buttons: [t('download_now'), t('not_now')],
                   defaultId: 0,
                   cancelId: 1
                 });
@@ -658,9 +658,9 @@ function createMenu() {
                   // show progress dialog
                   dialog.showMessageBox(mainWindow, {
                     type: 'info',
-                    title: 'Downloading Update',
-                    message: 'Downloading update in the background...',
-                    buttons: ['OK']
+                    title: t('downloading_update'),
+                    message: t('downloading_in_background'),
+                    buttons: [t('ok')]
                   });
                   
                   // Start download
@@ -672,15 +672,15 @@ function createMenu() {
                   type: 'info',
                   title: t('no_updates_available'),
                   message: t('no_updates_available_message'),
-                  buttons: ['OK']
+                  buttons: [t('ok')]
                 });
               }
             } catch (error) {
               dialog.showMessageBox(mainWindow, {
                 type: 'error',
                 title: t('update_error'),
-                message: `Error checking for updates: ${error.message}`,
-                buttons: ['OK']
+                message: t('update_error_d', error.message),
+                buttons: [t('ok')]
               });
             }
           }
@@ -1072,8 +1072,8 @@ autoUpdater.on('error', (err) => {
     dialog.showMessageBox(mainWindow, {
       type: 'error',
       title: t('update_error'),
-      message: `Error: ${err.message}`,
-      buttons: ['OK']
+      message: t('error_d', err.message),
+      buttons: [t('ok')]
     });
   }
 });
