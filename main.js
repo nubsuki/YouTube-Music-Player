@@ -6,13 +6,15 @@ const fetch = (...args) =>
 const path = require('path');
 const fs = require('fs').promises;
 
+const youtubeMusicDomain = 'https://music.youtube.com';
+
 let snfe;
 let mainWindow;
 let tray;
 let minimizeToTray = false;
 let openLastSong = true;
 let resumePlayback = false;
-let lastUrl = "https://music.youtube.com";
+let lastUrl = youtubeMusicDomain;
 let aboutWindow;
 
 // Video ad skipping settings
@@ -62,7 +64,7 @@ async function loadConfig() {
     videoAdSkipperEnabled = config.videoAdSkipperEnabled !== false;
     VideoAdSkipSpeed = config.VideoAdSkipSpeed || 2;
     openLastSong = config.openLastSong !== undefined ? config.openLastSong : true;
-    lastUrl = openLastSong ? (config.lastUrl || "https://music.youtube.com") : "https://music.youtube.com";
+    lastUrl = openLastSong ? (config.lastUrl || youtubeMusicDomain) : youtubeMusicDomain;
     resumePlayback = config.resumePlayback || false;
     
     console.log(`Config loaded - Minimize to tray: ${minimizeToTray}, Video ad skipper: ${videoAdSkipperEnabled}, Video ad skip speed: ${VideoAdSkipSpeed}, Last URL: ${lastUrl}, Open last song: ${openLastSong}, Resume playback: ${resumePlayback}`);
@@ -844,7 +846,7 @@ async function createWindow() {
         // Only save URL/time parameter if 'openLastSong' is enabled
         if (openLastSong) {
           // Only add time parameter if 'resumePlayback' is enabled AND it's a watch page
-          if (resumePlayback && currentUrl.includes('music.youtube.com/watch')) {
+          if (resumePlayback && currentUrl.includes(`${youtubeMusicDomain}/watch`)) {
             
             // Execute script to get current time in seconds
             const currentTimeValue = await mainWindow.webContents.executeJavaScript(`
@@ -869,7 +871,7 @@ async function createWindow() {
           }
         } else {
           // If openLastSong is disabled, force default URL for next launch
-          currentUrl = "https://music.youtube.com";
+          currentUrl = youtubeMusicDomain;
         }
 
         lastUrl = currentUrl;
@@ -884,8 +886,6 @@ async function createWindow() {
       }
     }
   });
-
-  const youtubeMusicDomain = 'music.youtube.com';
 
   // Logic to load URL
   let urlToLoad = lastUrl;
@@ -908,14 +908,14 @@ async function createWindow() {
         }
       }
     } else if (!openLastSong) {
-        urlToLoad = `https://${youtubeMusicDomain}`;
+        urlToLoad = youtubeMusicDomain;
     }
     
     mainWindow.loadURL(urlToLoad);
     console.log(`Loading URL: ${urlToLoad}`);
   } else {
-    mainWindow.loadURL(`https://${youtubeMusicDomain}`);
-    console.log('Loading default URL: https://music.youtube.com');
+    mainWindow.loadURL(youtubeMusicDomain);
+    console.log(`Loading default URL: ${youtubeMusicDomain}`);
   }
   
   // Hide cast buttons
