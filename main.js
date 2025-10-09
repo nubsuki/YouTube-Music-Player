@@ -10,6 +10,9 @@ let snfe;
 let mainWindow;
 let tray;
 let minimizeToTray = false;
+let openLastSong = true;
+let resumePlayback = false;
+let lastUrl = "https://music.youtube.com";
 let aboutWindow;
 
 // Video ad skipping settings
@@ -59,8 +62,11 @@ async function loadConfig() {
     minimizeToTray = config.minimizeToTray || false;
     videoAdSkipperEnabled = config.videoAdSkipperEnabled !== false;
     VideoAdSkipSpeed = config.VideoAdSkipSpeed || 2;
+    openLastSong = config.openLastSong !== undefined ? config.openLastSong : true;
+    lastUrl = openLastSong ? (config.lastUrl || "https://music.youtube.com") : "https://music.youtube.com";
+    resumePlayback = config.resumePlayback || false;
     
-    console.log(`Config loaded - Minimize to tray: ${minimizeToTray}, Video ad skipper: ${videoAdSkipperEnabled}, Video ad skip speed: ${VideoAdSkipSpeed}`);
+    console.log(`Config loaded - Minimize to tray: ${minimizeToTray}, Video ad skipper: ${videoAdSkipperEnabled}, Video ad skip speed: ${VideoAdSkipSpeed}, Last URL: ${lastUrl}, Open last song: ${openLastSong}, Resume playback: ${resumePlayback}`);
     return config;
   } catch (error) {
     console.log('Using default config settings');
@@ -73,7 +79,10 @@ async function saveConfig() {
     const config = {
       minimizeToTray: minimizeToTray,
       videoAdSkipperEnabled: videoAdSkipperEnabled,
-      VideoAdSkipSpeed: VideoAdSkipSpeed
+      VideoAdSkipSpeed: VideoAdSkipSpeed,
+      lastUrl: lastUrl,
+      openLastSong: openLastSong,
+      resumePlayback: resumePlayback
     };
     
     await fs.mkdir(path.dirname(CONFIG_FILE), { recursive: true });
@@ -380,6 +389,20 @@ function toggleTrayBehavior(enabled) {
   console.log(`Minimize to tray: ${enabled ? 'Enabled' : 'Disabled'}`);
 }
 
+function toggleReOpenBehavior(enabled) {
+  openLastSong = enabled;
+  saveConfig();
+  createMenu();
+  console.log(`Open last song: ${enabled ? 'Enabled' : 'Disabled'}`);
+}
+
+function toggleResumeBehavior(enabled) {
+  resumePlayback = enabled;
+  saveConfig();
+  createMenu();
+  console.log(`Resume playback: ${enabled ? 'Enabled' : 'Disabled'}`);
+}
+
 async function ensureCacheDir() {
   try {
     await fs.mkdir(CACHE_DIR, { recursive: true });
@@ -566,6 +589,23 @@ function createMenu() {
         }] : []),
         { type: 'separator' },
         {
+          label: t('reopen_last_song'),
+          type: 'checkbox',
+          checked: openLastSong,
+          click: (menuItem) => {
+            toggleReOpenBehavior(menuItem.checked);
+          }
+        },
+        ...(openLastSong ? [{
+          label: t('resume_playback'),
+          type: 'checkbox',
+          checked: resumePlayback,
+          click: (menuItem) => {
+            toggleResumeBehavior(menuItem.checked);
+          }
+        }] : []),
+        { type: 'separator' },
+        {
           label: t('ad_filter_settings'),
           click: () => {
             createSettingsWindow();
@@ -609,8 +649,8 @@ function createMenu() {
                 const updateResult = await dialog.showMessageBox(mainWindow, {
                   type: 'question',
                   title: t('update_available'),
-                  message: `A new version (${result.updateInfo.version}) is available. Would you like to download it now?`,
-                  buttons: ['Download Now', 'Not Now'],
+                  message: t('a_new_version_q', result.updateInfo.version),
+                  buttons: [t('download_now'), t('not_now')],
                   defaultId: 0,
                   cancelId: 1
                 });
@@ -619,9 +659,9 @@ function createMenu() {
                   // show progress dialog
                   dialog.showMessageBox(mainWindow, {
                     type: 'info',
-                    title: 'Downloading Update',
-                    message: 'Downloading update in the background...',
-                    buttons: ['OK']
+                    title: t('downloading_update'),
+                    message: t('downloading_in_background'),
+                    buttons: [t('ok')]
                   });
                   
                   // Start download
@@ -633,15 +673,15 @@ function createMenu() {
                   type: 'info',
                   title: t('no_updates_available'),
                   message: t('no_updates_available_message'),
-                  buttons: ['OK']
+                  buttons: [t('ok')]
                 });
               }
             } catch (error) {
               dialog.showMessageBox(mainWindow, {
                 type: 'error',
                 title: t('update_error'),
-                message: `Error checking for updates: ${error.message}`,
-                buttons: ['OK']
+                message: t('error_d', err.message),
+                buttons: [t('ok')]
               });
             }
           }
@@ -800,7 +840,42 @@ async function createWindow() {
             console.log('Could not pause audio:', e);
           }
         `);
+        let currentUrl = mainWindow.webContents.getURL();
         
+        // Only save URL/time parameter if 'openLastSong' is enabled
+        if (openLastSong) {
+          // Only add time parameter if 'resumePlayback' is enabled AND it's a watch page
+          if (resumePlayback && currentUrl.includes('music.youtube.com/watch')) {
+            
+            // Execute script to get current time in seconds
+            const currentTimeValue = await mainWindow.webContents.executeJavaScript(`
+                // Get the 'value' attribute of the progress bar slider, which is the time in seconds
+                document.querySelector('#progress-bar > #sliderContainer > div > #sliderBar')?.getAttribute('value');
+            `);
+
+            // Convert the value to an integer
+            const timeInSeconds = parseInt(currentTimeValue, 10);
+
+            // Check if the time is a valid positive number
+            if (!isNaN(timeInSeconds) && timeInSeconds > 0) {
+              // Use URL object for clean parameter management
+              try {
+                const urlObject = new URL(currentUrl);
+                urlObject.searchParams.set('t', timeInSeconds);
+                currentUrl = urlObject.toString();
+              } catch (e) {
+                console.log('Error modifying URL with time parameter:', e.message);
+              }
+            }
+          }
+        } else {
+          // If openLastSong is disabled, force default URL for next launch
+          currentUrl = "https://music.youtube.com";
+        }
+
+        lastUrl = currentUrl;
+        await saveConfig();
+        console.log(`URL saved: ${lastUrl}`);
         mainWindow.destroy();
         app.quit();
       } catch (error) {
@@ -811,7 +886,38 @@ async function createWindow() {
     }
   });
 
-  mainWindow.loadURL("https://music.youtube.com");
+  const youtubeMusicDomain = 'music.youtube.com';
+
+  // Logic to load URL
+  let urlToLoad = lastUrl;
+  
+  if (urlToLoad.includes(youtubeMusicDomain)) {
+    
+    // If last song is enabled, but resume playback is disabled, ensure 't' is removed.
+    if (openLastSong && !resumePlayback) {
+      try {
+        const urlObject = new URL(urlToLoad);
+        urlObject.searchParams.delete('t');
+        urlToLoad = urlObject.toString();
+        console.log('Removed playback time from URL as setting is disabled.');
+      } catch (e) {
+        console.log('Error removing "t" parameter:', e.message);
+        // Fallback to string manipulation if URL parsing fails
+        urlToLoad = urlToLoad.replace(/([?&])t=\d+/g, '$1');
+        if (urlToLoad.endsWith('?') || urlToLoad.endsWith('&')) {
+          urlToLoad = urlToLoad.slice(0, -1);
+        }
+      }
+    } else if (!openLastSong) {
+        urlToLoad = `https://${youtubeMusicDomain}`;
+    }
+    
+    mainWindow.loadURL(urlToLoad);
+    console.log(`Loading URL: ${urlToLoad}`);
+  } else {
+    mainWindow.loadURL(`https://${youtubeMusicDomain}`);
+    console.log('Loading default URL: https://music.youtube.com');
+  }
   
   // Hide cast buttons
   mainWindow.webContents.once('did-finish-load', () => {

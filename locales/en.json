@@ -39,5 +39,15 @@
   "update_available_title": "Update Available",
   "update_available_message": "A new version of YouTube Music Player is available. Do you want to download and install it now?",
   "update_download_error": "Update Download Error",
-  "update_download_error_message": "An error occurred while downloading the update."
+  "update_download_error_message": "An error occurred while downloading the update.",
+  "reopen_last_song": "Reopen Last Song",
+  "resume_playback": "Resume Playback Progress",
+  "a_new_version_q": "A new version ({0}) is available. Would you like to download it now?",
+  "download_now": "Download Now",
+  "not_now": "Not Now",
+  "downloading_update": "Downloading Update",
+  "downloading_in_background": "Downloading update in the background...",
+  "ok": "Ok",
+  "update_error_d": "Error checking for updates: {0}",
+  "error_d": "Error: {0}"
 }
