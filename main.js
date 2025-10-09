@@ -20,6 +20,9 @@ let videoAdSkipperEnabled = true;
 let VideoAdSkipSpeed = 2;
 let VideoAdSkipInterval = 200;
 
+// Auto continue still listening settings
+let autoContinueListeningInterval = 500;
+
 // Support for multiple languages
 const i18n = {};
 
@@ -939,6 +942,7 @@ async function createWindow() {
         visibility: hidden !important;
       }
     `);
+    console.log('Cast buttons hidden');
 
     // Inject JavaScript to auto-skip video ads
     if (videoAdSkipperEnabled) {
@@ -1017,7 +1021,80 @@ async function createWindow() {
     }else{
       console.log('Video ad skipper disabled by user');
     }
-    console.log('Cast buttons hidden');
+
+    // Inject JavaScript to auto-continue listening
+    mainWindow.webContents.executeJavaScript(`
+      (function() {
+        const checkInterval = ${autoContinueListeningInterval};
+        let lastDismissTime = 0;
+
+        function dismissDialog() {
+          try {
+            // Prevent rapid re-clicking
+            const now = Date.now();
+            if (now - lastDismissTime < 2000) return false;
+        
+            // Multiple dialog selectors
+            const dialogSelectors = [
+              'tp-yt-paper-dialog.style-scope',
+              'ytmusic-you-there-renderer',
+              'tp-yt-paper-dialog[role="dialog"]'
+            ];
+        
+            let dialog = null;
+            for (const selector of dialogSelectors) {
+              const element = document.querySelector(selector);
+              if (element && window.getComputedStyle(element).display !== 'none' && element.offsetParent !== null) {
+                dialog = element;
+                break;
+              }
+            }
+            
+            if (!dialog) return false;
+        
+            // Check dialog content
+            const dialogText = dialog.textContent?.toLowerCase() || '';
+            const isKeepListeningDialog = dialogText.includes('still listening') || 
+                                           dialogText.includes('still there') || 
+                                           dialogText.includes('you there');
+
+            if (!isKeepListeningDialog) return false;
+
+            // Multiple button selectors
+            const buttonSelectors = [
+              'yt-button-renderer.ytmusic-you-there-renderer',
+              'tp-yt-paper-button#button',
+              '[aria-label*="Yes" i]',
+              '[aria-label*="Continue" i]',
+              'button'
+            ];
+
+            for (const selector of buttonSelectors) {
+              const confirmButton = dialog.querySelector(selector);
+              if (confirmButton && confirmButton.offsetParent !== null && !confirmButton.disabled) {
+                confirmButton.click();
+                lastDismissTime = now;
+                console.log('Auto-dismissed "Keep listening?" dialog');
+                return true;
+              }
+            }
+          } catch (e) {
+            console.error('Error in dismissDialog:', e);
+          }
+          return false;
+        }
+
+        // Check periodically
+        setInterval(dismissDialog, checkInterval);
+
+        // Watch for dialog appearing
+        const observer = new MutationObserver(dismissDialog);
+        observer.observe(document.body, { childList: true, subtree: true });
+
+        console.log('Auto-continue listening feature initialized');
+      })();
+    `);
+    
   });
 }
 
