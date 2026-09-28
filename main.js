@@ -1,12 +1,27 @@
-require('dotenv').config({ path: require('path').join(__dirname, '.env') });
-const { app, BrowserWindow, Menu, Tray, shell, dialog, screen } = require("electron");
+require("dotenv").config({ path: require("path").join(__dirname, ".env") });
+const {
+  app,
+  BrowserWindow,
+  Menu,
+  Tray,
+  shell,
+  dialog,
+  screen,
+} = require("electron");
 const { autoUpdater } = require("electron-updater");
-const path = require('path');
-const fs = require('fs').promises;
-const { initializeFilterEngine: initFiltersExternal, setupWebRequestHandler: setupWRExternal, getUserFilters: getFiltersExternal, saveUserFilters: saveFiltersExternal, resetFilters: resetFiltersExternal, getAdblockStats: getAdblockStatsExternal, resetAdblockStats: resetAdblockStatsExternal } = require('./adblock/filters');
-const { injectVideoAdSkipper } = require('./adblock/videoAdSkipper');
-const { initDiscordRpc } = require('./integrations/discordRpc');
-
+const path = require("path");
+const fs = require("fs").promises;
+const {
+  initializeFilterEngine: initFiltersExternal,
+  setupWebRequestHandler: setupWRExternal,
+  getUserFilters: getFiltersExternal,
+  saveUserFilters: saveFiltersExternal,
+  resetFilters: resetFiltersExternal,
+  getAdblockStats: getAdblockStatsExternal,
+  resetAdblockStats: resetAdblockStatsExternal,
+} = require("./adblock/filters");
+const { injectVideoAdSkipper } = require("./adblock/videoAdSkipper");
+const { initDiscordRpc } = require("./integrations/discordRpc");
 
 let mainWindow;
 let settingsWindow;
@@ -20,7 +35,7 @@ let aboutWindow;
 let miniPlayerWindow;
 let miniPlayerBounds = { x: undefined, y: undefined, width: 320, height: 105 };
 let mainWindowBounds = { x: undefined, y: undefined, width: 1200, height: 800 };
-let miniPlayerTheme = 'blur';
+let miniPlayerTheme = "blur";
 let miniPlayerAlwaysOnTop = true;
 
 function ensureWindowIsVisible(bounds, defaultBounds) {
@@ -30,16 +45,23 @@ function ensureWindowIsVisible(bounds, defaultBounds) {
   const height = bounds.height || defaultBounds.height;
 
   const displays = screen.getAllDisplays();
-  const isVisible = displays.some(display => {
+  const isVisible = displays.some((display) => {
     const { x, y, width: dWidth, height: dHeight } = display.bounds;
     // Check if at least 50px of the window is visible on this display
-    const visibleX = Math.max(bounds.x, x) < Math.min(bounds.x + width, x + dWidth);
-    const visibleY = Math.max(bounds.y, y) < Math.min(bounds.y + height, y + dHeight);
+    const visibleX =
+      Math.max(bounds.x, x) < Math.min(bounds.x + width, x + dWidth);
+    const visibleY =
+      Math.max(bounds.y, y) < Math.min(bounds.y + height, y + dHeight);
 
     if (visibleX && visibleY) {
-      const intersectionWidth = Math.min(bounds.x + width, x + dWidth) - Math.max(bounds.x, x);
-      const intersectionHeight = Math.min(bounds.y + height, y + dHeight) - Math.max(bounds.y, y);
-      return intersectionWidth >= Math.min(width, 50) && intersectionHeight >= Math.min(height, 50);
+      const intersectionWidth =
+        Math.min(bounds.x + width, x + dWidth) - Math.max(bounds.x, x);
+      const intersectionHeight =
+        Math.min(bounds.y + height, y + dHeight) - Math.max(bounds.y, y);
+      return (
+        intersectionWidth >= Math.min(width, 50) &&
+        intersectionHeight >= Math.min(height, 50)
+      );
     }
     return false;
   });
@@ -60,22 +82,23 @@ let autoContinueListeningInterval = 500;
 // Support for multiple languages
 const i18n = {};
 
-const CONFIG_FILE = path.join(app.getPath('userData'), 'config.json');
+const CONFIG_FILE = path.join(app.getPath("userData"), "config.json");
 
-const { version: APP_VERSION } = require('./package.json');
+const { version: APP_VERSION } = require("./package.json");
 
 // Single instance lock
 const gotTheLock = app.requestSingleInstanceLock();
 
 // Icon
-const iconPath = process.platform === 'win32'
-  ? path.join(__dirname, 'assets', 'icon.ico')
-  : path.join(__dirname, 'assets', 'icon.png');
+const iconPath =
+  process.platform === "win32"
+    ? path.join(__dirname, "assets", "icon.ico")
+    : path.join(__dirname, "assets", "icon.png");
 
 if (!gotTheLock) {
   app.quit();
 } else {
-  app.on('second-instance', () => {
+  app.on("second-instance", () => {
     if (mainWindow) {
       if (mainWindow.isMinimized()) mainWindow.restore();
       mainWindow.show();
@@ -84,29 +107,43 @@ if (!gotTheLock) {
   });
 }
 
-
-
 async function loadConfig() {
   try {
-    const configData = await fs.readFile(CONFIG_FILE, 'utf8');
+    const configData = await fs.readFile(CONFIG_FILE, "utf8");
     const config = JSON.parse(configData);
 
     minimizeToTray = config.minimizeToTray || false;
     openMiniPlayerOnMinimize = config.openMiniPlayerOnMinimize || false;
     videoAdSkipperEnabled = !!config.videoAdSkipperEnabled;
     VideoAdSkipSpeed = config.VideoAdSkipSpeed || 2;
-    openLastSong = config.openLastSong !== undefined ? config.openLastSong : true;
-    lastUrl = openLastSong ? (config.lastUrl || "https://music.youtube.com") : "https://music.youtube.com";
+    openLastSong =
+      config.openLastSong !== undefined ? config.openLastSong : true;
+    lastUrl = openLastSong
+      ? config.lastUrl || "https://music.youtube.com"
+      : "https://music.youtube.com";
     resumePlayback = config.resumePlayback || false;
-    miniPlayerBounds = config.miniPlayerBounds || { x: undefined, y: undefined };
-    mainWindowBounds = config.mainWindowBounds || { x: undefined, y: undefined, width: 1200, height: 800 };
-    miniPlayerTheme = config.miniPlayerTheme || 'blur';
-    miniPlayerAlwaysOnTop = config.miniPlayerAlwaysOnTop !== undefined ? !!config.miniPlayerAlwaysOnTop : true;
+    miniPlayerBounds = config.miniPlayerBounds || {
+      x: undefined,
+      y: undefined,
+    };
+    mainWindowBounds = config.mainWindowBounds || {
+      x: undefined,
+      y: undefined,
+      width: 1200,
+      height: 800,
+    };
+    miniPlayerTheme = config.miniPlayerTheme || "blur";
+    miniPlayerAlwaysOnTop =
+      config.miniPlayerAlwaysOnTop !== undefined
+        ? !!config.miniPlayerAlwaysOnTop
+        : true;
 
-    console.log(`Config loaded - Minimize to tray: ${minimizeToTray}, Video ad skipper: ${videoAdSkipperEnabled}, Video ad skip speed: ${VideoAdSkipSpeed}, Last URL: ${lastUrl}, Open last song: ${openLastSong}, Resume playback: ${resumePlayback}, Mini-player bounds: ${JSON.stringify(miniPlayerBounds)}, Main window bounds: ${JSON.stringify(mainWindowBounds)}, Mini-player theme: ${miniPlayerTheme}`);
+    console.log(
+      `Config loaded - Minimize to tray: ${minimizeToTray}, Video ad skipper: ${videoAdSkipperEnabled}, Video ad skip speed: ${VideoAdSkipSpeed}, Last URL: ${lastUrl}, Open last song: ${openLastSong}, Resume playback: ${resumePlayback}, Mini-player bounds: ${JSON.stringify(miniPlayerBounds)}, Main window bounds: ${JSON.stringify(mainWindowBounds)}, Mini-player theme: ${miniPlayerTheme}`,
+    );
     return config;
   } catch (error) {
-    console.log('Using default config settings');
+    console.log("Using default config settings");
     return {};
   }
 }
@@ -124,33 +161,33 @@ async function saveConfig() {
       miniPlayerBounds: miniPlayerBounds,
       mainWindowBounds: mainWindowBounds,
       miniPlayerTheme: miniPlayerTheme,
-      miniPlayerAlwaysOnTop: miniPlayerAlwaysOnTop
+      miniPlayerAlwaysOnTop: miniPlayerAlwaysOnTop,
     };
 
     await fs.mkdir(path.dirname(CONFIG_FILE), { recursive: true });
-    await fs.writeFile(CONFIG_FILE, JSON.stringify(config, null, 2), 'utf8');
+    await fs.writeFile(CONFIG_FILE, JSON.stringify(config, null, 2), "utf8");
 
-    console.log('Config saved');
+    console.log("Config saved");
   } catch (error) {
-    console.log('Error saving config:', error.message);
+    console.log("Error saving config:", error.message);
   }
 }
 
 // Load a specific language file
 async function loadLanguage(lang) {
   // Try to load the language file from the 'locales' directory
-  const langPath = path.join(__dirname, 'locales', `${lang}.json`);
+  const langPath = path.join(__dirname, "locales", `${lang}.json`);
   try {
-    const data = await fs.readFile(langPath, 'utf8');
+    const data = await fs.readFile(langPath, "utf8");
     // Parse the JSON data and merge it with the existing i18n object
     Object.assign(i18n, JSON.parse(data));
     console.log(`Language loaded: ${lang}`);
   } catch (error) {
     console.error(`Error loading language file for ${lang}:`, error.message);
     // Fallback to English if the requested language is not available
-    if (lang !== 'en') {
-      console.log('Falling back to English...');
-      await loadLanguage('en');
+    if (lang !== "en") {
+      console.log("Falling back to English...");
+      await loadLanguage("en");
     }
   }
 }
@@ -159,10 +196,9 @@ async function loadLanguage(lang) {
 function t(key, ...args) {
   const text = i18n[key] || key;
   return text.replace(/{(\d+)}/g, (match, number) => {
-    return typeof args[number] !== 'undefined' ? args[number] : match;
+    return typeof args[number] !== "undefined" ? args[number] : match;
   });
 }
-
 
 function createSettingsWindow() {
   if (settingsWindow && !settingsWindow.isDestroyed()) {
@@ -178,21 +214,23 @@ function createSettingsWindow() {
     show: false,
     resizable: false,
     webPreferences: {
-      preload: path.join(__dirname, 'settings-filters/sf-preload.js'),
+      preload: path.join(__dirname, "settings-filters/sf-preload.js"),
       nodeIntegration: false,
       contextIsolation: true,
     },
-    icon: iconPath
+    icon: iconPath,
   });
 
   settingsWindow.setMenu(null);
-  settingsWindow.loadFile(path.join(__dirname, 'settings-filters/settings-filters.html'));
+  settingsWindow.loadFile(
+    path.join(__dirname, "settings-filters/settings-filters.html"),
+  );
 
-  settingsWindow.once('ready-to-show', () => {
+  settingsWindow.once("ready-to-show", () => {
     settingsWindow.show();
   });
 
-  settingsWindow.on('closed', () => {
+  settingsWindow.on("closed", () => {
     settingsWindow = null;
   });
 
@@ -208,26 +246,26 @@ function createAboutWindow() {
     show: false,
     resizable: false,
     icon: iconPath,
-    title: t('about_app'),
+    title: t("about_app"),
     webPreferences: {
-      preload: path.join(__dirname, 'about/about-preload.js'),
+      preload: path.join(__dirname, "about/about-preload.js"),
       nodeIntegration: false,
       contextIsolation: true,
-    }
+    },
   });
 
   // Remove the menu bar for the about window
   aboutWindow.setMenu(null);
 
   // Load the new about.html file
-  aboutWindow.loadFile(path.join(__dirname, 'about/about.html'));
+  aboutWindow.loadFile(path.join(__dirname, "about/about.html"));
 
   // Show the window once it is ready
-  aboutWindow.once('ready-to-show', () => {
+  aboutWindow.once("ready-to-show", () => {
     aboutWindow.show();
   });
 
-  aboutWindow.on('closed', () => {
+  aboutWindow.on("closed", () => {
     aboutWindow = null;
   });
 }
@@ -238,11 +276,13 @@ function createMiniPlayerWindow() {
     return;
   }
 
-  const defaultMiniBounds = { x: undefined, y: undefined, width: 320, height: 105 };
-  const safeBounds = ensureWindowIsVisible(
-    miniPlayerBounds,
-    defaultMiniBounds
-  );
+  const defaultMiniBounds = {
+    x: undefined,
+    y: undefined,
+    width: 320,
+    height: 105,
+  };
+  const safeBounds = ensureWindowIsVisible(miniPlayerBounds, defaultMiniBounds);
 
   miniPlayerWindow = new BrowserWindow({
     width: safeBounds.width || 320,
@@ -258,24 +298,28 @@ function createMiniPlayerWindow() {
     maximizable: false,
     skipTaskbar: true,
     webPreferences: {
-      preload: path.join(__dirname, 'mini-player/preload-mini-player.js'),
+      preload: path.join(__dirname, "mini-player/preload-mini-player.js"),
       nodeIntegration: false,
       contextIsolation: true,
     },
-    icon: iconPath
+    icon: iconPath,
   });
 
-  miniPlayerWindow.loadFile(path.join(__dirname, 'mini-player/mini-player.html'));
+  miniPlayerWindow.loadFile(
+    path.join(__dirname, "mini-player/mini-player.html"),
+  );
 
-  miniPlayerWindow.once('ready-to-show', () => {
+  miniPlayerWindow.once("ready-to-show", () => {
     miniPlayerWindow.show();
   });
 
   // Enable F12 and Ctrl+Shift+i for DevTools
-  miniPlayerWindow.webContents.on('before-input-event', (event, input) => {
-    if (input.key === 'F12' ||
-      (input.control && input.shift && input.key.toLowerCase() === 'i')) {
-      miniPlayerWindow.webContents.openDevTools({ mode: 'detach' });
+  miniPlayerWindow.webContents.on("before-input-event", (event, input) => {
+    if (
+      input.key === "F12" ||
+      (input.control && input.shift && input.key.toLowerCase() === "i")
+    ) {
+      miniPlayerWindow.webContents.openDevTools({ mode: "detach" });
       event.preventDefault();
     }
   });
@@ -289,10 +333,10 @@ function createMiniPlayerWindow() {
     }
   };
 
-  miniPlayerWindow.on('move', saveMiniPlayerPosition);
-  miniPlayerWindow.on('hide', saveMiniPlayerPosition);
-  miniPlayerWindow.on('close', saveMiniPlayerPosition);
-  miniPlayerWindow.on('closed', () => {
+  miniPlayerWindow.on("move", saveMiniPlayerPosition);
+  miniPlayerWindow.on("hide", saveMiniPlayerPosition);
+  miniPlayerWindow.on("close", saveMiniPlayerPosition);
+  miniPlayerWindow.on("closed", () => {
     if (miniPlayerStateInterval) {
       clearInterval(miniPlayerStateInterval);
       miniPlayerStateInterval = null;
@@ -315,7 +359,13 @@ function startMiniPlayerStatePolling() {
   if (miniPlayerStateInterval) clearInterval(miniPlayerStateInterval);
 
   miniPlayerStateInterval = setInterval(async () => {
-    if (!miniPlayerWindow || miniPlayerWindow.isDestroyed() || !mainWindow || mainWindow.isDestroyed()) return;
+    if (
+      !miniPlayerWindow ||
+      miniPlayerWindow.isDestroyed() ||
+      !mainWindow ||
+      mainWindow.isDestroyed()
+    )
+      return;
 
     try {
       if (mainWindow.webContents.isDestroyed()) return;
@@ -369,38 +419,43 @@ function startMiniPlayerStatePolling() {
         })()
       `);
 
-      if (miniPlayerWindow && !miniPlayerWindow.isDestroyed() && miniPlayerWindow.webContents && !miniPlayerWindow.webContents.isDestroyed()) {
-        miniPlayerWindow.webContents.send('state-update', state);
+      if (
+        miniPlayerWindow &&
+        !miniPlayerWindow.isDestroyed() &&
+        miniPlayerWindow.webContents &&
+        !miniPlayerWindow.webContents.isDestroyed()
+      ) {
+        miniPlayerWindow.webContents.send("state-update", state);
       }
     } catch (e) {
-      console.error('Error polling player state:', e);
+      console.error("Error polling player state:", e);
     }
   }, 1000);
 }
 
-const { ipcMain } = require('electron');
+const { ipcMain } = require("electron");
 
-ipcMain.handle('get-filters', async () => {
+ipcMain.handle("get-filters", async () => {
   return await getFiltersExternal();
 });
 
-ipcMain.handle('get-translations', (event, keys) => {
+ipcMain.handle("get-translations", (event, keys) => {
   const translations = {};
-  keys.forEach(key => {
+  keys.forEach((key) => {
     translations[key] = t(key);
   });
   return translations;
 });
 
-ipcMain.handle('get-adblock-stats', async () => {
-  if (typeof getAdblockStatsExternal !== 'function') {
+ipcMain.handle("get-adblock-stats", async () => {
+  if (typeof getAdblockStatsExternal !== "function") {
     return {
       active: adblockActive,
       engineReady: false,
       enabledLists: 0,
       checked: 0,
       blocked: 0,
-      lastBlockedAt: 0
+      lastBlockedAt: 0,
     };
   }
 
@@ -408,63 +463,66 @@ ipcMain.handle('get-adblock-stats', async () => {
   return { active: adblockActive, ...stats };
 });
 
-ipcMain.on('reset-adblock-stats', () => {
-  if (typeof resetAdblockStatsExternal === 'function') {
+ipcMain.on("reset-adblock-stats", () => {
+  if (typeof resetAdblockStatsExternal === "function") {
     resetAdblockStatsExternal();
   }
 });
 
-ipcMain.on('save-filters', async (event, newFilters) => {
+ipcMain.on("save-filters", async (event, newFilters) => {
   await saveFiltersExternal(newFilters);
   const success = await initFiltersExternal(true);
   adblockActive = !!success;
   if (success) setupWRExternal();
 });
 
-ipcMain.on('reset-filters', async (event) => {
+ipcMain.on("reset-filters", async (event) => {
   try {
     await resetFiltersExternal();
-    console.log('User filters reset to default successfully.');
+    console.log("User filters reset to default successfully.");
     const success = await initFiltersExternal(true);
     adblockActive = !!success;
     if (success) setupWRExternal();
   } catch (error) {
-    console.log('Error resetting user filters:', error.message);
+    console.log("Error resetting user filters:", error.message);
   }
 });
 
-ipcMain.handle('get-about-info', () => {
+ipcMain.handle("get-about-info", () => {
   return {
-    appName: t('app_name'),
+    appName: t("app_name"),
     appVersion: APP_VERSION,
-    appDescription: t('about_app_description'),
-    githubUrl: 'https://github.com/nubsuki/YouTube-Music-Player',
+    appDescription: t("about_app_description"),
+    githubUrl: "https://github.com/nubsuki/YouTube-Music-Player",
     translations: {
-      accept: t('accept'),
-      version: t('version_label', APP_VERSION),
-      github_link: t('github_link_text')
-    }
+      accept: t("accept"),
+      version: t("version_label", APP_VERSION),
+      github_link: t("github_link_text"),
+    },
   };
 });
 
 // Handle video ad skipper settings
-ipcMain.handle('get-ad-skipper-settings', () => {
+ipcMain.handle("get-ad-skipper-settings", () => {
   return {
     enabled: videoAdSkipperEnabled,
-    speed: VideoAdSkipSpeed
+    speed: VideoAdSkipSpeed,
   };
 });
 
-ipcMain.on('save-ad-skipper-settings', async (event, settings) => {
+ipcMain.on("save-ad-skipper-settings", async (event, settings) => {
   videoAdSkipperEnabled = settings.enabled;
   VideoAdSkipSpeed = settings.speed;
   await saveConfig();
-  console.log(`Video ad skipper settings updated: Enabled=${videoAdSkipperEnabled}, Speed=${VideoAdSkipSpeed}x`);
+  console.log(
+    `Video ad skipper settings updated: Enabled=${videoAdSkipperEnabled}, Speed=${VideoAdSkipSpeed}x`,
+  );
 });
 
-ipcMain.on('open-external-link', (event, url) => {
-  shell.openExternal(url)
-    .catch(error => console.error('Error opening external link:', error));
+ipcMain.on("open-external-link", (event, url) => {
+  shell
+    .openExternal(url)
+    .catch((error) => console.error("Error opening external link:", error));
 });
 
 let miniPlayerSettingsWindow;
@@ -474,9 +532,12 @@ function createMiniPlayerSettingsWindow() {
     return;
   }
 
-  const parentWindow = (miniPlayerWindow && !miniPlayerWindow.isDestroyed())
-    ? miniPlayerWindow
-    : ((mainWindow && !mainWindow.isDestroyed()) ? mainWindow : undefined);
+  const parentWindow =
+    miniPlayerWindow && !miniPlayerWindow.isDestroyed()
+      ? miniPlayerWindow
+      : mainWindow && !mainWindow.isDestroyed()
+        ? mainWindow
+        : undefined;
 
   miniPlayerSettingsWindow = new BrowserWindow({
     width: 250,
@@ -486,51 +547,53 @@ function createMiniPlayerSettingsWindow() {
     frame: true,
     resizable: false,
     show: false,
-    title: t('mini_player_settings'),
+    title: t("mini_player_settings"),
     webPreferences: {
-      preload: path.join(__dirname, 'mini-player/preload-mini-player.js'),
+      preload: path.join(__dirname, "mini-player/preload-mini-player.js"),
       nodeIntegration: false,
       contextIsolation: true,
     },
-    icon: iconPath
+    icon: iconPath,
   });
 
   miniPlayerSettingsWindow.setMenu(null);
-  miniPlayerSettingsWindow.loadFile(path.join(__dirname, 'mini-player/settings.html'));
+  miniPlayerSettingsWindow.loadFile(
+    path.join(__dirname, "mini-player/settings.html"),
+  );
 
-  miniPlayerSettingsWindow.once('ready-to-show', () => {
+  miniPlayerSettingsWindow.once("ready-to-show", () => {
     miniPlayerSettingsWindow.show();
   });
 
-  miniPlayerSettingsWindow.on('closed', () => {
+  miniPlayerSettingsWindow.on("closed", () => {
     miniPlayerSettingsWindow = null;
   });
 }
 
-ipcMain.on('open-mini-player-settings', () => {
+ipcMain.on("open-mini-player-settings", () => {
   createMiniPlayerSettingsWindow();
 });
 
-ipcMain.handle('get-mini-player-theme', () => {
+ipcMain.handle("get-mini-player-theme", () => {
   return miniPlayerTheme;
 });
 
-ipcMain.on('set-mini-player-theme', (event, theme) => {
+ipcMain.on("set-mini-player-theme", (event, theme) => {
   miniPlayerTheme = theme;
   saveConfig();
   console.log(`Mini player theme updated to: ${theme}`);
 
   // Notify all windows of theme change
   if (miniPlayerWindow && !miniPlayerWindow.isDestroyed()) {
-    miniPlayerWindow.webContents.send('theme-changed', theme);
+    miniPlayerWindow.webContents.send("theme-changed", theme);
   }
 });
 
-ipcMain.handle('get-mini-player-always-on-top', () => {
+ipcMain.handle("get-mini-player-always-on-top", () => {
   return miniPlayerAlwaysOnTop;
 });
 
-ipcMain.on('set-mini-player-always-on-top', (event, enabled) => {
+ipcMain.on("set-mini-player-always-on-top", (event, enabled) => {
   miniPlayerAlwaysOnTop = !!enabled;
   saveConfig();
 
@@ -539,7 +602,7 @@ ipcMain.on('set-mini-player-always-on-top', (event, enabled) => {
   }
 });
 
-ipcMain.on('resize-about-window', (event, width, height) => {
+ipcMain.on("resize-about-window", (event, width, height) => {
   if (aboutWindow) {
     // Set the size and adjust content bounds (important for different OS)
     aboutWindow.setSize(width, height, true);
@@ -549,32 +612,35 @@ ipcMain.on('resize-about-window', (event, width, height) => {
   }
 });
 
-
-
-ipcMain.on('player-control', (event, data) => {
+ipcMain.on("player-control", (event, data) => {
   if (!mainWindow) return;
 
-  let action = typeof data === 'string' ? data : data.action;
+  let action = typeof data === "string" ? data : data.action;
   let script = "";
 
   switch (action) {
-    case 'play-pause':
-      script = '{ const btn = document.querySelector("#play-pause-button"); if (btn) btn.click(); }';
+    case "play-pause":
+      script =
+        '{ const btn = document.querySelector("#play-pause-button"); if (btn) btn.click(); }';
       break;
-    case 'previous':
-      script = '{ const btn = document.querySelector(".previous-button"); if (btn) btn.click(); }';
+    case "previous":
+      script =
+        '{ const btn = document.querySelector(".previous-button"); if (btn) btn.click(); }';
       break;
-    case 'next':
-      script = '{ const btn = document.querySelector(".next-button"); if (btn) btn.click(); }';
+    case "next":
+      script =
+        '{ const btn = document.querySelector(".next-button"); if (btn) btn.click(); }';
       break;
-    case 'like':
-      script = '{ const btn = document.querySelector("#button-shape-like > button"); if (btn) btn.click(); }';
+    case "like":
+      script =
+        '{ const btn = document.querySelector("#button-shape-like > button"); if (btn) btn.click(); }';
       break;
-    case 'dislike':
-      script = '{ const btn = document.querySelector("#button-shape-dislike > button"); if (btn) btn.click(); }';
+    case "dislike":
+      script =
+        '{ const btn = document.querySelector("#button-shape-dislike > button"); if (btn) btn.click(); }';
       break;
-    case 'seek':
-      if (typeof data.value !== 'undefined') {
+    case "seek":
+      if (typeof data.value !== "undefined") {
         const rawValue = data.value;
         script = `
           {
@@ -590,7 +656,7 @@ ipcMain.on('player-control', (event, data) => {
         `;
       }
       break;
-    case 'maximize':
+    case "maximize":
       if (miniPlayerWindow) {
         miniPlayerWindow.close();
       }
@@ -602,8 +668,8 @@ ipcMain.on('player-control', (event, data) => {
   }
 
   if (script && mainWindow && !mainWindow.webContents.isDestroyed()) {
-    mainWindow.webContents.executeJavaScript(script).catch(e => {
-      console.error('Error executing player control script:', e);
+    mainWindow.webContents.executeJavaScript(script).catch((e) => {
+      console.error("Error executing player control script:", e);
     });
   }
 });
@@ -615,19 +681,24 @@ function createTray() {
 
   const contextMenu = Menu.buildFromTemplate([
     {
-      label: t('show'),
+      label: t("show"),
       click: () => {
         if (miniPlayerWindow) {
           miniPlayerWindow.close();
         }
         mainWindow.show();
         mainWindow.focus();
-      }
+      },
     },
     {
-      label: t('reset_position'),
+      label: t("reset_position"),
       click: () => {
-        mainWindowBounds = { x: undefined, y: undefined, width: 1200, height: 800 };
+        mainWindowBounds = {
+          x: undefined,
+          y: undefined,
+          width: 1200,
+          height: 800,
+        };
         miniPlayerBounds = { x: undefined, y: undefined };
         saveConfig();
 
@@ -639,22 +710,22 @@ function createTray() {
         if (miniPlayerWindow && !miniPlayerWindow.isDestroyed()) {
           miniPlayerWindow.center();
         }
-      }
+      },
     },
     {
-      label: t('quit'),
+      label: t("quit"),
       click: () => {
         app.isQuiting = true;
         app.quit();
-      }
-    }
+      },
+    },
   ]);
 
   tray.setContextMenu(contextMenu);
-  tray.setToolTip(t('app_name'));
+  tray.setToolTip(t("app_name"));
 
   // Double-click to show/hide
-  tray.on('double-click', () => {
+  tray.on("double-click", () => {
     if (mainWindow.isVisible()) {
       mainWindow.hide();
       // Show the mini player if the option is enabled
@@ -671,14 +742,14 @@ function createTray() {
     }
   });
 
-  console.log('System tray created');
+  console.log("System tray created");
 }
 
 function destroyTray() {
   if (tray) {
     tray.destroy();
     tray = null;
-    console.log('System tray removed');
+    console.log("System tray removed");
   }
 }
 
@@ -693,52 +764,55 @@ function toggleTrayBehavior(enabled) {
 
   saveConfig();
   createMenu();
-  console.log(`Minimize to tray: ${enabled ? 'Enabled' : 'Disabled'}`);
+  console.log(`Minimize to tray: ${enabled ? "Enabled" : "Disabled"}`);
 }
 
 function toggleReOpenBehavior(enabled) {
   openLastSong = enabled;
   saveConfig();
   createMenu();
-  console.log(`Open last song: ${enabled ? 'Enabled' : 'Disabled'}`);
+  console.log(`Open last song: ${enabled ? "Enabled" : "Disabled"}`);
 }
 
 function toggleResumeBehavior(enabled) {
   resumePlayback = enabled;
   saveConfig();
   createMenu();
-  console.log(`Resume playback: ${enabled ? 'Enabled' : 'Disabled'}`);
+  console.log(`Resume playback: ${enabled ? "Enabled" : "Disabled"}`);
 }
 function toggleMiniPlayerOnMinimize(enabled) {
   openMiniPlayerOnMinimize = enabled;
   saveConfig();
   createMenu();
-  console.log(`Open mini player on minimize: ${enabled ? 'Enabled' : 'Disabled'}`);
+  console.log(
+    `Open mini player on minimize: ${enabled ? "Enabled" : "Disabled"}`,
+  );
 }
-
 
 // Load all filters in parallel
 
 function handleStartupSettings() {
   const args = process.argv.slice(1);
 
-  if (args.includes('--enable-startup')) {
+  if (args.includes("--enable-startup")) {
     app.setLoginItemSettings({
       openAtLogin: true,
-      path: app.getPath('exe')
+      path: app.getPath("exe"),
     });
-    console.log('Startup enabled');
+    console.log("Startup enabled");
   }
 
-  if (args.includes('--disable-startup')) {
+  if (args.includes("--disable-startup")) {
     app.setLoginItemSettings({
-      openAtLogin: false
+      openAtLogin: false,
     });
-    console.log('Startup disabled');
+    console.log("Startup disabled");
   }
 
   const loginItemSettings = app.getLoginItemSettings();
-  console.log(`Startup status: ${loginItemSettings.openAtLogin ? 'Enabled' : 'Disabled'}`);
+  console.log(
+    `Startup status: ${loginItemSettings.openAtLogin ? "Enabled" : "Disabled"}`,
+  );
 }
 
 function createMenu() {
@@ -746,133 +820,155 @@ function createMenu() {
 
   const template = [
     {
-      label: t('settings'),
+      label: t("settings"),
       submenu: [
         {
-          label: t('start_with_system'),
-          type: 'checkbox',
+          label: t("start_with_system"),
+          type: "checkbox",
           checked: loginItemSettings.openAtLogin,
           click: (menuItem) => {
             app.setLoginItemSettings({
               openAtLogin: menuItem.checked,
-              path: app.getPath('exe')
+              path: app.getPath("exe"),
             });
-            console.log(`Startup ${menuItem.checked ? 'enabled' : 'disabled'}`);
-          }
+            console.log(`Startup ${menuItem.checked ? "enabled" : "disabled"}`);
+          },
         },
-        { type: 'separator' },
+        { type: "separator" },
         {
-          label: t('minimize_to_tray'),
-          type: 'checkbox',
+          label: t("minimize_to_tray"),
+          type: "checkbox",
           checked: minimizeToTray,
           click: (menuItem) => {
             toggleTrayBehavior(menuItem.checked);
-          }
+          },
         },
         // Show tray options only when enabled
-        ...(minimizeToTray ? [{
-          label: t('open_mini_player'),
-          type: 'checkbox',
-          checked: openMiniPlayerOnMinimize,
-          click: (menuItem) => {
-            toggleMiniPlayerOnMinimize(menuItem.checked);
-          }
-        }] : []),
-        ...(minimizeToTray ? [{
-          label: t('hide_to_tray'),
-          accelerator: 'Ctrl+H',
-          click: () => {
-            mainWindow.hide();
-          }
-        }] : []),
+        ...(minimizeToTray
+          ? [
+              {
+                label: t("open_mini_player"),
+                type: "checkbox",
+                checked: openMiniPlayerOnMinimize,
+                click: (menuItem) => {
+                  toggleMiniPlayerOnMinimize(menuItem.checked);
+                },
+              },
+            ]
+          : []),
+        ...(minimizeToTray
+          ? [
+              {
+                label: t("hide_to_tray"),
+                accelerator: "Ctrl+H",
+                click: () => {
+                  mainWindow.hide();
+                },
+              },
+            ]
+          : []),
         {
-          label: t('mini_player_settings'),
+          label: t("mini_player_settings"),
           click: () => {
             createMiniPlayerSettingsWindow();
-          }
+          },
         },
-        { type: 'separator' },
+        { type: "separator" },
         {
-          label: t('reopen_last_song'),
-          type: 'checkbox',
+          label: t("reopen_last_song"),
+          type: "checkbox",
           checked: openLastSong,
           click: (menuItem) => {
             toggleReOpenBehavior(menuItem.checked);
-          }
+          },
         },
-        ...(openLastSong ? [{
-          label: t('resume_playback'),
-          type: 'checkbox',
-          checked: resumePlayback,
-          click: (menuItem) => {
-            toggleResumeBehavior(menuItem.checked);
-          }
-        }] : []),
-        { type: 'separator' },
+        ...(openLastSong
+          ? [
+              {
+                label: t("resume_playback"),
+                type: "checkbox",
+                checked: resumePlayback,
+                click: (menuItem) => {
+                  toggleResumeBehavior(menuItem.checked);
+                },
+              },
+            ]
+          : []),
+        { type: "separator" },
         {
-          label: t('ad_filter_settings'),
+          label: t("ad_filter_settings"),
           click: () => {
             createSettingsWindow();
-          }
+          },
         },
         {
-          label: t('update_ad_filters'),
+          label: t("update_ad_filters"),
           click: async () => {
-            console.log('Manually updating filters...');
+            console.log("Manually updating filters...");
             const success = await initFiltersExternal(true);
-            console.log(success ? 'Filters updated!' : 'Filter update failed');
+            console.log(success ? "Filters updated!" : "Filter update failed");
 
-            console.log('Restarting...');
+            console.log("Restarting...");
             app.isQuiting = true;
 
-            if (miniPlayerSettingsWindow && !miniPlayerSettingsWindow.isDestroyed()) miniPlayerSettingsWindow.close();
-            if (settingsWindow && !settingsWindow.isDestroyed()) settingsWindow.close();
+            if (
+              miniPlayerSettingsWindow &&
+              !miniPlayerSettingsWindow.isDestroyed()
+            )
+              miniPlayerSettingsWindow.close();
+            if (settingsWindow && !settingsWindow.isDestroyed())
+              settingsWindow.close();
             if (aboutWindow && !aboutWindow.isDestroyed()) aboutWindow.close();
-            if (miniPlayerWindow && !miniPlayerWindow.isDestroyed()) miniPlayerWindow.close();
+            if (miniPlayerWindow && !miniPlayerWindow.isDestroyed())
+              miniPlayerWindow.close();
 
             app.relaunch();
             app.quit();
-          }
+          },
         },
-        { type: 'separator' },
+        { type: "separator" },
         {
-          label: t('quit'),
-          accelerator: 'Ctrl+Q',
+          label: t("quit"),
+          accelerator: "Ctrl+Q",
           click: () => {
             app.isQuiting = true;
             app.quit();
-          }
-        }
-      ]
+          },
+        },
+      ],
     },
     {
-      label: t('help'),
+      label: t("help"),
       submenu: [
         {
-          label: t('check_for_updates'),
+          label: t("check_for_updates"),
           click: async () => {
             try {
-              // Check for updates 
+              // Check for updates
               const result = await autoUpdater.checkForUpdates();
 
-              if (result && result.updateInfo && result.updateInfo.version !== APP_VERSION) {
+              if (
+                result &&
+                result.updateInfo &&
+                result.updateInfo.version !== APP_VERSION
+              ) {
                 // Update available
                 const updateResult = await dialog.showMessageBox(mainWindow, {
-                  type: 'question',
-                  title: t('update_available'),
-                  message: t('a_new_version_q', result.updateInfo.version),
-                  buttons: [t('download_now'), t('not_now')],
+                  type: "question",
+                  title: t("update_available"),
+                  message: t("a_new_version_q", result.updateInfo.version),
+                  buttons: [t("download_now"), t("not_now")],
                   defaultId: 0,
-                  cancelId: 1
+                  cancelId: 1,
                 });
 
                 if (updateResult.response === 0) {
                   // show progress dialog
                   dialog.showMessageBox(mainWindow, {
-                    type: 'info',
-                    title: t('downloading_update'),
-                    message: t('downloading_in_background'),
-                    buttons: [t('ok')]
+                    type: "info",
+                    title: t("downloading_update"),
+                    message: t("downloading_in_background"),
+                    buttons: [t("ok")],
                   });
 
                   // Start download
@@ -881,52 +977,53 @@ function createMenu() {
               } else {
                 // No updates available
                 dialog.showMessageBox(mainWindow, {
-                  type: 'info',
-                  title: t('no_updates_available'),
-                  message: t('no_updates_available_message'),
-                  buttons: [t('ok')]
+                  type: "info",
+                  title: t("no_updates_available"),
+                  message: t("no_updates_available_message"),
+                  buttons: [t("ok")],
                 });
               }
             } catch (error) {
               dialog.showMessageBox(mainWindow, {
-                type: 'error',
-                title: t('update_error'),
-                message: t('error_d', error.message),
-                buttons: [t('ok')]
+                type: "error",
+                title: t("update_error"),
+                message: t("error_d", error.message),
+                buttons: [t("ok")],
               });
             }
-          }
+          },
         },
         {
-          label: t('about'),
+          label: t("about"),
           click: () => {
             createAboutWindow();
-          }
-        }
-      ]
-    }
+          },
+        },
+      ],
+    },
   ];
 
   const menu = Menu.buildFromTemplate(template);
   Menu.setApplicationMenu(menu);
 }
 
-
 async function createWindow() {
   await loadConfig();
 
   // Get system locale and load language
-  const userLocale = app.getLocale().split('-')[0];
+  const userLocale = app.getLocale().split("-")[0];
   await loadLanguage(userLocale);
 
   if (minimizeToTray) {
     createTray();
   }
 
-  const safeMainBounds = ensureWindowIsVisible(
-    mainWindowBounds,
-    { x: undefined, y: undefined, width: 1200, height: 800 }
-  );
+  const safeMainBounds = ensureWindowIsVisible(mainWindowBounds, {
+    x: undefined,
+    y: undefined,
+    width: 1200,
+    height: 800,
+  });
 
   mainWindow = new BrowserWindow({
     width: safeMainBounds.width || 1200,
@@ -947,19 +1044,21 @@ async function createWindow() {
         x: bounds.x,
         y: bounds.y,
         width: bounds.width,
-        height: bounds.height
+        height: bounds.height,
       };
       saveConfig();
     }
   };
 
-  mainWindow.on('move', saveMainWindowBounds);
-  mainWindow.on('resize', saveMainWindowBounds);
+  mainWindow.on("move", saveMainWindowBounds);
+  mainWindow.on("resize", saveMainWindowBounds);
 
   // Enable F12 and Ctrl+Shift+i for DevTools - for Advanced Users
-  mainWindow.webContents.on('before-input-event', (event, input) => {
-    if (input.key === 'F12' ||
-      (input.control && input.shift && input.key.toLowerCase() === 'i')) {
+  mainWindow.webContents.on("before-input-event", (event, input) => {
+    if (
+      input.key === "F12" ||
+      (input.control && input.shift && input.key.toLowerCase() === "i")
+    ) {
       mainWindow.webContents.toggleDevTools();
       event.preventDefault();
     }
@@ -970,19 +1069,19 @@ async function createWindow() {
   // Load filters in background
   initFiltersExternal().then((success) => {
     adblockActive = !!success;
-    console.log(success ? 'Ad blocking active' : 'Ad blocking failed');
+    console.log(success ? "Ad blocking active" : "Ad blocking failed");
     if (success) {
       setupWRExternal();
     }
   });
 
   // Handle close button based on tray setting
-  mainWindow.on('close', async (event) => {
+  mainWindow.on("close", async (event) => {
     if (!app.isQuiting && minimizeToTray) {
       // Hide to tray, keep music playing
       event.preventDefault();
       mainWindow.hide();
-      console.log('App minimized to tray');
+      console.log("App minimized to tray");
 
       if (openMiniPlayerOnMinimize) {
         createMiniPlayerWindow();
@@ -990,9 +1089,9 @@ async function createWindow() {
 
       if (tray && !mainWindow.trayNotificationShown) {
         tray.displayBalloon({
-          iconType: 'info',
-          title: 'YouTube Music',
-          content: t('notify_tray')
+          iconType: "info",
+          title: "YouTube Music",
+          content: t("notify_tray"),
         });
         mainWindow.trayNotificationShown = true;
       }
@@ -1021,10 +1120,13 @@ async function createWindow() {
         // Only save URL/time parameter if 'openLastSong' is enabled
         if (openLastSong) {
           // Only add time parameter if 'resumePlayback' is enabled AND it's a watch page
-          if (resumePlayback && currentUrl.includes('music.youtube.com/watch')) {
-
+          if (
+            resumePlayback &&
+            currentUrl.includes("music.youtube.com/watch")
+          ) {
             // Execute script to get current time in seconds
-            const currentTimeValue = await mainWindow.webContents.executeJavaScript(`
+            const currentTimeValue = await mainWindow.webContents
+              .executeJavaScript(`
                 // Get the 'value' attribute of the progress bar slider, which is the time in seconds
                 document.querySelector('#progress-bar > #sliderContainer > div > #sliderBar')?.getAttribute('value');
             `);
@@ -1037,10 +1139,13 @@ async function createWindow() {
               // Use URL object for clean parameter management
               try {
                 const urlObject = new URL(currentUrl);
-                urlObject.searchParams.set('t', timeInSeconds);
+                urlObject.searchParams.set("t", timeInSeconds);
                 currentUrl = urlObject.toString();
               } catch (e) {
-                console.log('Error modifying URL with time parameter:', e.message);
+                console.log(
+                  "Error modifying URL with time parameter:",
+                  e.message,
+                );
               }
             }
           }
@@ -1057,7 +1162,7 @@ async function createWindow() {
         }
         app.quit();
       } catch (error) {
-        console.log('Error pausing audio:', error);
+        console.log("Error pausing audio:", error);
         if (mainWindow && !mainWindow.isDestroyed()) {
           mainWindow.destroy();
         }
@@ -1066,7 +1171,7 @@ async function createWindow() {
     }
   });
 
-  const youtubeMusicDomain = 'music.youtube.com';
+  const youtubeMusicDomain = "music.youtube.com";
 
   let finalUrlToLoad = `https://${youtubeMusicDomain}`;
 
@@ -1074,14 +1179,16 @@ async function createWindow() {
     const parsedUrl = new URL(lastUrl);
     if (parsedUrl.hostname === youtubeMusicDomain) {
       if (openLastSong && !resumePlayback) {
-        parsedUrl.searchParams.delete('t');
+        parsedUrl.searchParams.delete("t");
       } else if (!openLastSong) {
-        parsedUrl.pathname = '/';
-        parsedUrl.search = '';
+        parsedUrl.pathname = "/";
+        parsedUrl.search = "";
       }
       finalUrlToLoad = parsedUrl.toString();
     } else {
-      console.warn(`Attempted to load an invalid URL: ${lastUrl}. Defaulting to ${finalUrlToLoad}`);
+      console.warn(
+        `Attempted to load an invalid URL: ${lastUrl}. Defaulting to ${finalUrlToLoad}`,
+      );
     }
   } catch (e) {
     console.error(`Error parsing lastUrl "${lastUrl}":`, e.message);
@@ -1090,8 +1197,21 @@ async function createWindow() {
   mainWindow.loadURL(finalUrlToLoad);
   console.log(`Loading URL: ${finalUrlToLoad}`);
 
+  // Offline page
+  mainWindow.webContents.on(
+    "did-fail-load",
+    (event, errorCode, errorDescription, validatedURL, isMainFrame) => {
+      if (isMainFrame && errorCode !== -3) {
+        console.log(
+          `Failed to load ${validatedURL}: ${errorDescription} (${errorCode})`,
+        );
+        mainWindow.loadFile(path.join(__dirname, "offline/offline.html"));
+      }
+    },
+  );
+
   // Hide cast buttons
-  mainWindow.webContents.once('did-finish-load', () => {
+  mainWindow.webContents.once("did-finish-load", () => {
     mainWindow.webContents.insertCSS(`
       .ytmusic-player-bar .middle-controls [aria-label*="cast" i],
       .ytmusic-player-bar .middle-controls [aria-label*="connect" i],
@@ -1113,9 +1233,13 @@ async function createWindow() {
         visibility: hidden !important;
       }
     `);
-    console.log('Cast buttons hidden');
+    console.log("Cast buttons hidden");
 
-    injectVideoAdSkipper(mainWindow.webContents, { enabled: videoAdSkipperEnabled, speed: VideoAdSkipSpeed, interval: VideoAdSkipInterval });
+    injectVideoAdSkipper(mainWindow.webContents, {
+      enabled: videoAdSkipperEnabled,
+      speed: VideoAdSkipSpeed,
+      interval: VideoAdSkipInterval,
+    });
     initDiscordRpc(mainWindow);
 
     // Inject JavaScript to auto-continue listening
@@ -1192,58 +1316,64 @@ async function createWindow() {
         console.log('Auto-continue listening feature initialized');
       })();
     `);
-
   });
 }
 
 handleStartupSettings();
 
-
 // Updater event handlers
-autoUpdater.on('checking-for-update', () => {
-  console.log('Checking for update...');
+autoUpdater.on("checking-for-update", () => {
+  console.log("Checking for update...");
 });
 
-autoUpdater.on('update-available', (info) => {
-  console.log('Update available:', info);
+autoUpdater.on("update-available", (info) => {
+  console.log("Update available:", info);
 });
 
-autoUpdater.on('update-not-available', (info) => {
-  console.log('Update not available:', info);
+autoUpdater.on("update-not-available", (info) => {
+  console.log("Update not available:", info);
 });
 
-autoUpdater.on('error', (err) => {
-  console.log('Error in auto-updater:', err);
+autoUpdater.on("error", (err) => {
+  console.log("Error in auto-updater:", err);
   if (mainWindow) {
     dialog.showMessageBox(mainWindow, {
-      type: 'error',
-      title: t('update_error'),
+      type: "error",
+      title: t("update_error"),
       message: `Error: ${err.message}`,
-      buttons: [t('ok')]
+      buttons: [t("ok")],
     });
   }
 });
 
-autoUpdater.on('download-progress', (progressObj) => {
+autoUpdater.on("download-progress", (progressObj) => {
   let log_message = "Download speed: " + progressObj.bytesPerSecond;
-  log_message = log_message + ' - Downloaded ' + progressObj.percent + '%';
-  log_message = log_message + ' (' + progressObj.transferred + "/" + progressObj.total + ')';
+  log_message = log_message + " - Downloaded " + progressObj.percent + "%";
+  log_message =
+    log_message +
+    " (" +
+    progressObj.transferred +
+    "/" +
+    progressObj.total +
+    ")";
   console.log(log_message);
 });
 
-autoUpdater.on('update-downloaded', (info) => {
-  console.log('Update downloaded:', info);
+autoUpdater.on("update-downloaded", (info) => {
+  console.log("Update downloaded:", info);
   if (mainWindow) {
-    dialog.showMessageBox(mainWindow, {
-      type: 'info',
-      title: t('update_ready'),
-      message: t('update_ready_message'),
-      buttons: [t('restart_now'), t('later')]
-    }).then((result) => {
-      if (result.response === 0) {
-        autoUpdater.quitAndInstall();
-      }
-    });
+    dialog
+      .showMessageBox(mainWindow, {
+        type: "info",
+        title: t("update_ready"),
+        message: t("update_ready_message"),
+        buttons: [t("restart_now"), t("later")],
+      })
+      .then((result) => {
+        if (result.response === 0) {
+          autoUpdater.quitAndInstall();
+        }
+      });
   }
 });
 
