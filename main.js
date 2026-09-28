@@ -1152,7 +1152,9 @@ async function createWindow() {
             const dialogText = dialog.textContent?.toLowerCase() || '';
             const isKeepListeningDialog = dialogText.includes('still listening') || 
                                            dialogText.includes('still there') || 
-                                           dialogText.includes('you there');
+                                           dialogText.includes('you there') ||
+                                           dialogText.includes('video paused') ||
+                                           dialogText.includes('continue watching');
 
             if (!isKeepListeningDialog) return false;
 
