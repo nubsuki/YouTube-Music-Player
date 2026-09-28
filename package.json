@@ -68,12 +68,14 @@
         "deb"
       ],
       "icon": "assets/icon.png",
-      "category": "Audio"
+      "category": "Audio",
+      "artifactName": "YouTube-Music-${version}-${arch}.${ext}"
     },
     "mac": {
       "target": "dmg",
       "icon": "assets/icon.png",
-      "category": "public.app-category.music"
+      "category": "public.app-category.music",
+      "artifactName": "YouTube-Music-${version}-${arch}.${ext}"
     }
   },
   "dependencies": {
