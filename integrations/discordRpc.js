@@ -1,4 +1,4 @@
-const rpc = require("discord-rpc");
+const rpc = require("@xhayper/discord-rpc");
 
 const clientId = process.env.YTMP_DISCORD_CLIENT_ID || "1332344236015878314";
 let client = null;
@@ -7,15 +7,26 @@ let presenceUpdateInterval;
 let mainWindowRef = null;
 const appLaunchTimestamp = Math.floor(Date.now() / 1000);
 
-if (clientId) {
-  rpc.register(clientId);
-}
-
-function setDiscordActivity(songTitle = "Loading Song", artist = "Loading Artist", songUrl = "", albumArtUrl = "", isPlaying = false) {
+// Set discord activity status
+function setDiscordActivity(
+  songTitle = "Loading Song",
+  artist = "Loading Artist",
+  songUrl = "",
+  albumArtUrl = "",
+  isPlaying = false,
+  currentTime = 0,
+  duration = 0,
+) {
   if (!client || !isConnected) return;
 
-  const Title = songTitle && songTitle.toString().trim().length > 0 ? songTitle.toString().trim() : "Loading Song";
-  const Artist = artist && artist.toString().trim().length > 0 ? artist.toString().trim() : "Loading Artist";
+  const Title =
+    songTitle && songTitle.toString().trim().length > 0
+      ? songTitle.toString().trim()
+      : "Loading Song";
+  const Artist =
+    artist && artist.toString().trim().length > 0
+      ? artist.toString().trim()
+      : "Loading Artist";
   let Url = typeof songUrl === "string" ? songUrl.trim() : "";
   if (!Url || Url.length > 512) {
     Url = "https://music.youtube.com";
@@ -36,11 +47,21 @@ function setDiscordActivity(songTitle = "Loading Song", artist = "Loading Artist
   });
 
   const activity = {
+    type: 2, // Listening to
     largeImageText: "YouTube Music",
-    startTimestamp: appLaunchTimestamp,
     instance: false,
     buttons,
   };
+
+  if (isPlaying) {
+    activity.startTimestamp =
+      Math.floor(Date.now() / 1000) - Math.floor(currentTime);
+    if (duration > 0 && !isNaN(duration)) {
+      activity.endTimestamp = activity.startTimestamp + Math.floor(duration);
+    }
+  } else {
+    activity.startTimestamp = appLaunchTimestamp;
+  }
 
   if (isPlaying) {
     activity.details = Title;
@@ -51,20 +72,26 @@ function setDiscordActivity(songTitle = "Loading Song", artist = "Loading Artist
     activity.largeImageKey = "icon";
   }
 
-  client
-    .setActivity(activity)
-    .catch((error) => {
+  if (client.user) {
+    client.user.setActivity(activity).catch((error) => {
       console.error("Error setting Discord activity:", error);
     });
+  }
 }
 
 async function getCurrentSongInfo() {
   try {
     if (!mainWindowRef || mainWindowRef.isDestroyed()) {
-      return { songTitle: "Loading Song", artist: "Loading Artist", songUrl: "", albumArtUrl: "" };
+      return {
+        songTitle: "Loading Song",
+        artist: "Loading Artist",
+        songUrl: "",
+        albumArtUrl: "",
+      };
     }
 
-    const { songTitle, artist, albumArtUrl, isPlaying } = await mainWindowRef.webContents.executeJavaScript(`
+    const { songTitle, artist, albumArtUrl, isPlaying, currentTime, duration } =
+      await mainWindowRef.webContents.executeJavaScript(`
       (() => {
         const titleElement = document.querySelector('.title.ytmusic-player-bar');
         const bylineElement = document.querySelector('.byline.ytmusic-player-bar');
@@ -90,18 +117,30 @@ async function getCurrentSongInfo() {
         const albumArtUrl = imgElement ? imgElement.src : '';
 
         let isPlaying = false;
+        let currentTime = 0;
+        let duration = 0;
 
         if (audioElement && !audioElement.paused && !audioElement.ended && audioElement.currentTime > 0) {
           isPlaying = true;
+          currentTime = audioElement.currentTime;
+          duration = audioElement.duration;
         } else if (videoElement && !videoElement.paused && !videoElement.ended && videoElement.currentTime > 0) {
           isPlaying = true;
+          currentTime = videoElement.currentTime;
+          duration = videoElement.duration;
         }
 
-        return { songTitle, artist, qartist, albumArtUrl, isPlaying };
+        return { songTitle, artist, qartist, albumArtUrl, isPlaying, currentTime, duration };
       })();
     `);
-    const SongTitle = songTitle && songTitle.toString().trim().length > 0 ? songTitle.toString().trim() : "Loading Song";
-    const Artist = artist && artist.toString().trim().length > 0 ? artist.toString().trim() : "Loading Artist";
+    const SongTitle =
+      songTitle && songTitle.toString().trim().length > 0
+        ? songTitle.toString().trim()
+        : "Loading Song";
+    const Artist =
+      artist && artist.toString().trim().length > 0
+        ? artist.toString().trim()
+        : "Loading Artist";
 
     let songUrl = mainWindowRef.webContents.getURL();
     if (typeof songUrl !== "string" || songUrl.length === 0) {
@@ -111,10 +150,26 @@ async function getCurrentSongInfo() {
       songUrl = "https://music.youtube.com";
     }
 
-    return { songTitle: SongTitle, artist: Artist, songUrl, albumArtUrl, isPlaying };
+    return {
+      songTitle: SongTitle,
+      artist: Artist,
+      songUrl,
+      albumArtUrl,
+      isPlaying,
+      currentTime,
+      duration,
+    };
   } catch (error) {
     console.error("Error fetching song info:", error);
-    return { songTitle: "Loading Song", artist: "Loading Artist", songUrl: "", albumArtUrl: "", isPlaying: false };
+    return {
+      songTitle: "Loading Song",
+      artist: "Loading Artist",
+      songUrl: "",
+      albumArtUrl: "",
+      isPlaying: false,
+      currentTime: 0,
+      duration: 0,
+    };
   }
 }
 
@@ -125,11 +180,14 @@ async function connectToDiscord() {
         await client.destroy();
         console.log("Destroyed old Discord client session.");
       } catch (error) {
-        console.warn("Error destroying old client (might already be destroyed):", error.message);
+        console.warn(
+          "Error destroying old client (might already be destroyed):",
+          error.message,
+        );
       }
     }
 
-    client = new rpc.Client({ transport: "ipc" });
+    client = new rpc.Client({ clientId });
 
     client.on("ready", () => {
       console.log("Successfully connected to Discord!");
@@ -138,8 +196,24 @@ async function connectToDiscord() {
       setDiscordActivity();
 
       presenceUpdateInterval = setInterval(async () => {
-        const { songTitle, artist, songUrl, albumArtUrl, isPlaying } = await getCurrentSongInfo();
-        setDiscordActivity(songTitle, artist, songUrl, albumArtUrl, isPlaying);
+        const {
+          songTitle,
+          artist,
+          songUrl,
+          albumArtUrl,
+          isPlaying,
+          currentTime,
+          duration,
+        } = await getCurrentSongInfo();
+        setDiscordActivity(
+          songTitle,
+          artist,
+          songUrl,
+          albumArtUrl,
+          isPlaying,
+          currentTime,
+          duration,
+        );
       }, 12000);
     });
 
@@ -153,7 +227,7 @@ async function connectToDiscord() {
       handleDiscordDisconnect();
     });
 
-    await client.login({ clientId });
+    await client.login();
   } catch (error) {
     console.error("Failed to connect to Discord:", error.message);
 
@@ -172,14 +246,23 @@ function handleDiscordDisconnect() {
   }
 
   if (client) {
-    client.clearActivity().catch((error) => console.error("Error clearing activity:", error.message));
-    client.destroy().catch((error) => console.error("Error destroying client:", error.message));
+    if (client.user) {
+      client.user
+        .clearActivity()
+        .catch((error) =>
+          console.error("Error clearing activity:", error.message),
+        );
+    }
+    client
+      .destroy()
+      .catch((error) =>
+        console.error("Error destroying client:", error.message),
+      );
   }
 
   client = null;
   setTimeout(connectToDiscord, 10000);
 }
-
 
 function initDiscordRpc(mainWindow) {
   if (!clientId) {

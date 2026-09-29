@@ -81,7 +81,7 @@
   "dependencies": {
     "@ghostery/adblocker-electron": "^2.18.2",
     "@gorhill/ubo-core": "^0.1.30",
-    "discord-rpc": "^4.0.1",
+    "@xhayper/discord-rpc": "^1.5.1",
     "dotenv": "^16.4.5",
     "electron-updater": "^6.8.9",
     "node-fetch": "^3.3.2"
