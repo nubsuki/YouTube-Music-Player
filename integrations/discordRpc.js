@@ -1,4 +1,5 @@
 const rpc = require("@xhayper/discord-rpc");
+const { getListenAlongState } = require("../listen-along/listenAlong");
 
 const clientId = process.env.YTMP_DISCORD_CLIENT_ID || "1332344236015878314";
 let client = null;
@@ -41,10 +42,19 @@ function setDiscordActivity(
     });
   }
 
-  buttons.push({
-    label: "Get App",
-    url: "https://github.com/nubsuki/YouTube-Music-Player",
-  });
+  // Show "Listen Along" if a party is active, otherwise show "Get App"
+  const laState = getListenAlongState();
+  if (laState.isActive && laState.partyId && laState.serverUrl && isPlaying) {
+    buttons.push({
+      label: "Listen Along 🎵",
+      url: `${laState.serverUrl}/party/${laState.partyId}`,
+    });
+  } else {
+    buttons.push({
+      label: "Get App",
+      url: "https://github.com/nubsuki/YouTube-Music-Player",
+    });
+  }
 
   const activity = {
     type: 2, // Listening to

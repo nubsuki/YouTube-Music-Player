@@ -45,6 +45,12 @@
       "**/*",
       "node_modules/**/*"
     ],
+    "protocols": [
+      {
+        "name": "YouTube Music Player",
+        "schemes": ["ytmp"]
+      }
+    ],
     "publish": {
       "provider": "github",
       "owner": "nubsuki",
@@ -84,6 +90,7 @@
     "@xhayper/discord-rpc": "^1.5.1",
     "dotenv": "^16.4.5",
     "electron-updater": "^6.8.9",
-    "node-fetch": "^3.3.2"
+    "node-fetch": "^3.3.2",
+    "socket.io-client": "^4.8.4"
   }
 }
