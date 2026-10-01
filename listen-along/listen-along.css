@@ -673,3 +673,40 @@ input[type="text"]:focus {
 .status-msg.show {
   display: flex;
 }
+
+/* Disclosure box */
+.disclosure-box {
+  background: rgba(139, 92, 246, 0.05);
+  border: 1px solid rgba(139, 92, 246, 0.15);
+  border-radius: 9px;
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.disclosure-title {
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--accent2);
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.disclosure-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 7px;
+  font-size: 11px;
+  color: var(--text-muted);
+  line-height: 1.45;
+}
+
+.disclosure-row svg {
+  flex-shrink: 0;
+  margin-top: 1px;
+  opacity: 0.7;
+}

@@ -92,6 +92,36 @@ function startBroadcast() {
   }, 3000);
 }
 
+// Validate a URL is on YouTube Music
+function isSafeYtMusicUrl(url) {
+  if (!url || typeof url !== "string") return false;
+  try {
+    const parsed = new URL(url);
+    return (
+      parsed.protocol === "https:" &&
+      /^(music\.youtube\.com|www\.youtube\.com)$/.test(parsed.hostname)
+    );
+  } catch {
+    return false;
+  }
+}
+
+// Validate thumbnail is from a trusted YouTube CDN
+function isSafeThumbnail(url) {
+  if (!url || typeof url !== "string") return false;
+  try {
+    const parsed = new URL(url);
+    return (
+      parsed.protocol === "https:" &&
+      /^(lh3\.googleusercontent\.com|i\.ytimg\.com|yt3\.ggpht\.com)$/.test(
+        parsed.hostname,
+      )
+    );
+  } catch {
+    return false;
+  }
+}
+
 // Playback sync
 function extractVideoId(url) {
   if (!url) return null;
@@ -107,7 +137,9 @@ function extractVideoId(url) {
 async function syncPlayback(state) {
   if (!mainWindowRef || mainWindowRef.isDestroyed() || !state) return;
 
-  const hostVideoId = extractVideoId(state.url);
+  // Only navigate to verified YouTube Music URLs
+  const safeUrl = isSafeYtMusicUrl(state.url) ? state.url : null;
+  const hostVideoId = safeUrl ? extractVideoId(safeUrl) : null;
 
   try {
     const currentUrl = mainWindowRef.webContents.getURL();
@@ -120,8 +152,8 @@ async function syncPlayback(state) {
       hostVideoId !== lastNavigatedVideoId
     ) {
       lastNavigatedVideoId = hostVideoId;
-      console.log(`[ListenAlong] Guest syncing track: ${state.url}`);
-      await mainWindowRef.loadURL(state.url);
+      console.log(`[ListenAlong] Guest syncing track: ${safeUrl}`);
+      await mainWindowRef.loadURL(safeUrl);
       return;
     }
 
