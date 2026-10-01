@@ -1,6 +1,6 @@
 const { io } = require("socket.io-client");
 
-const DEFAULT_SERVER_URL = "URL";
+const DEFAULT_SERVER_URL = "https://ytms.nubsuki.xyz";
 
 let socket = null;
 let currentParty = null;
