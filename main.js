@@ -230,6 +230,9 @@ function createListenAlongWindow() {
 
   listenAlongWindow.on("closed", () => {
     listenAlongWindow = null;
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.focus();
+    }
   });
 }
 
@@ -674,10 +677,10 @@ function createMiniPlayerSettingsWindow() {
 
   miniPlayerSettingsWindow = new BrowserWindow({
     width: 250,
-    height: 250,
+    height: 190,
     parent: parentWindow,
-    modal: !!parentWindow,
-    frame: true,
+    modal: false,
+    frame: false,
     resizable: false,
     show: false,
     title: t("mini_player_settings"),
@@ -700,11 +703,22 @@ function createMiniPlayerSettingsWindow() {
 
   miniPlayerSettingsWindow.on("closed", () => {
     miniPlayerSettingsWindow = null;
+    if (miniPlayerWindow && !miniPlayerWindow.isDestroyed()) {
+      miniPlayerWindow.focus();
+    } else if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.focus();
+    }
   });
 }
 
 ipcMain.on("open-mini-player-settings", () => {
   createMiniPlayerSettingsWindow();
+});
+
+ipcMain.on("close-mini-player-settings", () => {
+  if (miniPlayerSettingsWindow && !miniPlayerSettingsWindow.isDestroyed()) {
+    miniPlayerSettingsWindow.close();
+  }
 });
 
 ipcMain.handle("get-mini-player-theme", () => {
