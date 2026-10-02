@@ -466,7 +466,7 @@ function createMiniPlayerWindow() {
     }
   };
 
-  miniPlayerWindow.on("move", saveMiniPlayerPosition);
+  miniPlayerWindow.on("moved", saveMiniPlayerPosition);
   miniPlayerWindow.on("hide", saveMiniPlayerPosition);
   miniPlayerWindow.on("close", saveMiniPlayerPosition);
   miniPlayerWindow.on("closed", () => {
@@ -1189,8 +1189,8 @@ async function createWindow() {
     }
   };
 
-  mainWindow.on("move", saveMainWindowBounds);
-  mainWindow.on("resize", saveMainWindowBounds);
+  mainWindow.on("moved", saveMainWindowBounds);
+  mainWindow.on("resized", saveMainWindowBounds);
 
   // Enable F12 and Ctrl+Shift+i for DevTools - for Advanced Users
   mainWindow.webContents.on("before-input-event", (event, input) => {
