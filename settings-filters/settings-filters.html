@@ -1,117 +1,162 @@
 <!DOCTYPE html>
-<html lang="es">
+<html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title id="config-title"></title>
+    <meta http-equiv="Content-Security-Policy" content="script-src 'self'">
+    <title id="config-title">Filter Settings</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
     <link rel="stylesheet" href="./settings-filters.css">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
 </head>
 <body>
-    <main class="container">
-        <form id="filter-form">
-            <h3 class="section-title"><i class="bi bi-funnel"></i> Filter List</h3>
+    <div class="titlebar">
+        <span class="titlebar-icon">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="12" r="3" />
+                <path d="M19.07 4.93a10 10 0 0 1 0 14.14M4.93 4.93a10 10 0 0 0 0 14.14" />
+            </svg>
+        </span>
+        <span class="titlebar-text">Filter Settings</span>
+        <button class="close-btn" id="close-btn" title="Close">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round">
+                <line x1="18" y1="6" x2="6" y2="18"></line>
+                <line x1="6" y1="6" x2="18" y2="18"></line>
+            </svg>
+        </button>
+    </div>
 
-            <section id="adblock-status" class="status-card">
-                <div class="status-header">
-                    <div class="status-title">
-                        <i class="bi bi-shield-check"></i>
+    <main class="content">
+        <form id="filter-form">
+            <!-- Adblock Status Section -->
+            <section class="card status-card">
+                <div class="card-header">
+                    <div class="card-title">
+                        <i class="bi bi-shield-check" style="color: var(--accent)"></i>
                         <span>Adblock Status</span>
                     </div>
-                    <button id="reset-adblock-stats" type="button" class="secondary outline">Reset counters</button>
+                    <button id="reset-adblock-stats" type="button" class="btn btn-secondary btn-sm">Reset counters</button>
                 </div>
+                
                 <div class="status-grid">
                     <div class="status-item">
                         <span class="status-label">State</span>
-                        <span id="adblock-state" class="status-value"></span>
+                        <span id="adblock-state" class="status-value highlight">...</span>
                     </div>
                     <div class="status-item">
-                        <span class="status-label">Enabled lists</span>
-                        <span id="adblock-enabled-lists" class="status-value"></span>
+                        <span class="status-label">Enabled</span>
+                        <span id="adblock-enabled-lists" class="status-value">0</span>
                     </div>
                     <div class="status-item">
                         <span class="status-label">Checked</span>
-                        <span id="adblock-checked" class="status-value"></span>
+                        <span id="adblock-checked" class="status-value">0</span>
                     </div>
                     <div class="status-item">
                         <span class="status-label">Blocked</span>
-                        <span id="adblock-blocked" class="status-value"></span>
+                        <span id="adblock-blocked" class="status-value">0</span>
                     </div>
                 </div>
-                <div id="adblock-hint" class="status-hint"></div>
+                <div id="adblock-hint" class="status-hint">Loading status...</div>
             </section>
 
-            <section id="filter-list"></section>
             <!-- Video Ad Skipper Settings -->
-            <section id="ad-skipper-settings">
-                <div class="filter-item ad-skipper-item">
-                    <div class="filter-content">
-                        <label>
-                            <input type="checkbox" id="ad-skipper-enabled">
-                            <span>Simple Skipper</span>
-                        </label>
-                        <div class="filter-desc">Automatically skips video ads at the selected speed.</div>
+            <section class="card">
+                <div class="card-header">
+                    <div class="card-title">
+                        <i class="bi bi-fast-forward-btn" style="color: var(--accent2)"></i>
+                        <span>Video Ad Skipper</span>
                     </div>
-                    <select id="ad-skip-speed" aria-label="Skip Speed">
-                        <option value="2">2x</option>
-                        <option value="4">4x</option>
-                        <option value="6">6x</option>
-                        <option value="8">8x</option>
-                    </select>
+                </div>
+                <div class="toggle-row">
+                    <div class="toggle-info">
+                        <span class="toggle-label">Simple Skipper</span>
+                        <span class="toggle-desc">Automatically skips video ads at the selected speed.</span>
+                    </div>
+                    <div class="toggle-controls">
+                        <select id="ad-skip-speed" class="select-box">
+                            <option value="2">2x Speed</option>
+                            <option value="4">4x Speed</option>
+                            <option value="6">6x Speed</option>
+                            <option value="8">8x Speed</option>
+                        </select>
+                        <label class="switch">
+                            <input id="ad-skipper-enabled" type="checkbox" />
+                            <span class="slider"></span>
+                        </label>
+                    </div>
                 </div>
             </section>
-            <footer>
-                <a href="#" id="add-filter" role="button" class="outline add-filter-green">
-                    <i class="bi bi-plus-circle"></i> 
-                    <span id="add-filter-text"></span>
-                </a>
-                <a href="#" id="more-filters" role="button" class="outline more-filters-blue">
-                    <i class="bi bi-github"></i> 
-                    <span id="more-filters-text"></span>
-                </a>
-            </footer>
-            <div class="controls">
-                <button id="reset-button" type="button" class="secondary outline">
-                    <i class="bi bi-arrow-counterclockwise"></i>
-                    <span id="reset-button-text"></span>
-                </button>
-                <button id="cancel-button" type="button" class="cancel-red">
-                    <i class="bi bi-x-circle"></i>
-                    <span id="cancel-button-text"></span>
-                </button>
-                <button id="save-button" type="button" class="primary">
-                    <i class="bi bi-save"></i>
-                    <span id="save-button-text"></span>
-                </button>
-            </div>
 
-            <div id="add-filter-modal" class="modal" hidden>
-                <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="add-filter-modal-title">
-                    <h3 id="add-filter-modal-title" class="modal-title"></h3>
-
-                    <label class="modal-field">
-                        <span id="add-filter-name-label" class="modal-label"></span>
-                        <input id="add-filter-name" type="text" autocomplete="off" />
-                    </label>
-
-                    <label class="modal-field">
-                        <span id="add-filter-url-label" class="modal-label"></span>
-                        <input id="add-filter-url" type="text" autocomplete="off" placeholder="https://..." />
-                    </label>
-
-                    <div id="add-filter-error" class="modal-error" hidden></div>
-
-                    <div class="modal-actions">
-                        <button id="add-filter-cancel" type="button" class="secondary outline">
-                            <span id="add-filter-cancel-text"></span>
+            <!-- Filter List Section -->
+            <section class="card list-card">
+                <div class="card-header">
+                    <div class="card-title">
+                        <i class="bi bi-funnel"></i>
+                        <span>Filter Lists</span>
+                    </div>
+                    <div class="header-actions">
+                        <button id="reset-button" type="button" class="btn btn-danger-outline expandable-btn" title="Reset">
+                            <i class="bi bi-arrow-counterclockwise"></i>
+                            <span id="reset-button-text">Reset</span>
                         </button>
-                        <button id="add-filter-confirm" type="button" class="primary">
-                            <span id="add-filter-confirm-text"></span>
+                        <button id="cancel-button" type="button" class="btn btn-secondary expandable-btn" title="Cancel">
+                            <i class="bi bi-x-lg"></i>
+                            <span id="cancel-button-text">Cancel</span>
+                        </button>
+                        <button id="save-button" type="button" class="btn btn-primary expandable-btn" title="Save">
+                            <i class="bi bi-save"></i>
+                            <span id="save-button-text">Save Changes</span>
+                        </button>
+                        <div class="divider"></div>
+                        <a href="#" id="more-filters" class="btn btn-secondary expandable-btn" title="Get more filters">
+                            <i class="bi bi-github"></i> 
+                            <span id="more-filters-text">More Filters</span>
+                        </a>
+                        <a href="#" id="add-filter" class="btn btn-primary expandable-btn" title="Add new filter">
+                            <i class="bi bi-plus-lg"></i>
+                            <span id="add-filter-text">Add</span>
+                        </a>
+                    </div>
+                </div>
+                <div id="filter-list" class="filter-list-container">
+                    <!-- Filters injected here -->
+                </div>
+            </section>
+
+
+
+            <!-- Modal for Adding Filters -->
+            <div id="add-filter-modal" class="modal-overlay" hidden>
+                <div class="modal-card">
+                    <h3 id="add-filter-modal-title" class="modal-title">Add Filter</h3>
+                    
+                    <div class="modal-body">
+                        <div class="input-group">
+                            <label id="add-filter-name-label" class="input-label">Name</label>
+                            <input id="add-filter-name" class="input-field" type="text" autocomplete="off" placeholder="e.g. My Custom Filter" />
+                        </div>
+                        
+                        <div class="input-group">
+                            <label id="add-filter-url-label" class="input-label">URL</label>
+                            <input id="add-filter-url" class="input-field" type="text" autocomplete="off" placeholder="https://..." />
+                        </div>
+                        
+                        <div id="add-filter-error" class="error-message" hidden></div>
+                    </div>
+                    
+                    <div class="modal-footer">
+                        <button id="add-filter-cancel" type="button" class="btn btn-secondary">
+                            <span id="add-filter-cancel-text">Cancel</span>
+                        </button>
+                        <button id="add-filter-confirm" type="button" class="btn btn-primary">
+                            <span id="add-filter-confirm-text">Add</span>
                         </button>
                     </div>
                 </div>
             </div>
         </form>
     </main>
+
+    <script src="./sf-renderer.js"></script>
 </body>
-<script src="./sf-renderer.js"></script>
 </html>

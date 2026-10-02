@@ -8,6 +8,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     const moreFiltersLink = document.getElementById('more-filters');
     const resetButton = document.getElementById('reset-button');
     const configTitle = document.getElementById('config-title');
+    const closeBtn = document.getElementById('close-btn');
+
+    if (closeBtn) closeBtn.addEventListener('click', () => window.close());
 
     configTitle.textContent = translations.ad_filter_config_title;
     document.getElementById('add-filter-text').textContent = translations.add_new_filter;

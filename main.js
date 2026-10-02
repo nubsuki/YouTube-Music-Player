@@ -346,7 +346,8 @@ function createSettingsWindow() {
     width: 800,
     height: 600,
     parent: mainWindow,
-    modal: true,
+    modal: false,
+    frame: false,
     show: false,
     resizable: false,
     webPreferences: {
@@ -368,6 +369,9 @@ function createSettingsWindow() {
 
   settingsWindow.on("closed", () => {
     settingsWindow = null;
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.focus();
+    }
   });
 
   return settingsWindow;
