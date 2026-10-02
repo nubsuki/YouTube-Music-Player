@@ -442,6 +442,17 @@
         inactive.style.display = 'flex';
         active.style.display = 'none';
         liveBadge.classList.remove('show');
+
+        const startBtn = document.getElementById('start-btn');
+        if (startBtn) {
+          startBtn.disabled = false;
+          startBtn.innerHTML = `${ICONS.broadcast}<span>Start Party</span>`;
+        }
+        const joinBtn = document.getElementById('join-btn');
+        if (joinBtn) {
+          joinBtn.disabled = false;
+          joinBtn.innerHTML = `${ICONS.headphones}<span>Join Party</span>`;
+        }
       }
     }
 
