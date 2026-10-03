@@ -11,6 +11,17 @@ let mainWindowRef = null;
 let onStateChangeCb = null;
 let lastNavigatedVideoId = null;
 
+// Clock sync state
+let clockOffset = 0;
+let clockSyncDone = false;
+
+// Sync tuning
+const SYNC_BROADCAST_INTERVAL = 2000;
+const SYNC_SCHEDULE_BUFFER = 300;
+const DRIFT_HARD_THRESHOLD = 2.0;
+const DRIFT_SOFT_THRESHOLD = 0.5;
+const DRIFT_IGNORE_THRESHOLD = 0.1;
+
 // Public state
 function getListenAlongState() {
   if (!currentParty) {
@@ -38,6 +49,49 @@ function getListenAlongState() {
     members: currentMembers,
     songState: lastSongState,
   };
+}
+
+// Clock sync
+function syncClock(sock) {
+  return new Promise((resolve) => {
+    const SAMPLES = 5;
+    const offsets = [];
+    let sent = 0;
+
+    const doSample = () => {
+      const t1 = Date.now();
+      sock.emit("clock:ping", { t1 }, (response) => {
+        const t3 = Date.now();
+        if (!response || !response.t2) return resolve(0);
+
+        const { t2 } = response;
+        const rtt = t3 - t1;
+        const offset = t2 - t1 - rtt / 2;
+        offsets.push(offset);
+        sent++;
+
+        if (sent < SAMPLES) {
+          setTimeout(doSample, 50);
+        } else {
+          // trim outliers, average the rest
+          offsets.sort((a, b) => a - b);
+          const trimmed = offsets.slice(1, -1);
+          const avg = trimmed.reduce((s, v) => s + v, 0) / trimmed.length;
+          clockOffset = Math.round(avg);
+          clockSyncDone = true;
+          console.log(`[ListenAlong] Clock synced. Offset: ${clockOffset}ms`);
+          resolve(clockOffset);
+        }
+      });
+    };
+
+    doSample();
+  });
+}
+
+// Get current server time based on our measured offset
+function serverNow() {
+  return Date.now() + clockOffset;
 }
 
 // Song state polling
@@ -69,7 +123,7 @@ async function getSongState() {
   }
 }
 
-// Broadcast loop
+// Host sends state with server timestamp for scheduled sync
 function startBroadcast() {
   if (broadcastInterval) clearInterval(broadcastInterval);
   broadcastInterval = setInterval(async () => {
@@ -86,10 +140,13 @@ function startBroadcast() {
     socket.emit("party:state-update", {
       partyId: currentParty.id,
       hostToken: currentParty.hostToken,
-      state,
+      state: {
+        ...state,
+        serverTimestamp: serverNow(),
+      },
     });
     notifyStateChange();
-  }, 3000);
+  }, SYNC_BROADCAST_INTERVAL);
 }
 
 // Validate a URL is on YouTube Music
@@ -134,10 +191,10 @@ function extractVideoId(url) {
   }
 }
 
+// Core sync
 async function syncPlayback(state) {
   if (!mainWindowRef || mainWindowRef.isDestroyed() || !state) return;
 
-  // Only navigate to verified YouTube Music URLs
   const safeUrl = isSafeYtMusicUrl(state.url) ? state.url : null;
   const hostVideoId = safeUrl ? extractVideoId(safeUrl) : null;
 
@@ -145,7 +202,7 @@ async function syncPlayback(state) {
     const currentUrl = mainWindowRef.webContents.getURL();
     const guestVideoId = extractVideoId(currentUrl);
 
-    // If host has changed tracks and guest is not yet on it, navigate
+    // Track changed — navigate first, sync will happen on next broadcast
     if (
       hostVideoId &&
       hostVideoId !== guestVideoId &&
@@ -157,31 +214,66 @@ async function syncPlayback(state) {
       return;
     }
 
-    // Sync play/pause state and seek position if drift > 3 seconds
+    // Calculate actual host position accounting for transit time
+    let targetTime = Number(state.currentTime) || 0;
+    if (state.isPlaying && state.serverTimestamp && clockSyncDone) {
+      const elapsedSinceCapture = (serverNow() - state.serverTimestamp) / 1000;
+      if (elapsedSinceCapture > 0 && elapsedSinceCapture < 10) {
+        targetTime += elapsedSinceCapture;
+      }
+    }
+
+    const shouldPlay = Boolean(state.isPlaying);
+
     const script = `
       (() => {
         try {
           const audio = document.querySelector('audio');
           const video = document.querySelector('video');
           const media = (audio && audio.duration) ? audio : video;
-          if (!media) return;
+          if (!media) return { status: 'no-media' };
 
-          const shouldPlay = ${Boolean(state.isPlaying)};
-          const targetTime = ${Number(state.currentTime) || 0};
+          const targetTime = ${targetTime};
+          const shouldPlay = ${shouldPlay};
+          const drift = media.currentTime - targetTime;
+          const absDrift = Math.abs(drift);
 
+          // Play/pause control
           if (shouldPlay && media.paused) {
             media.play().catch(() => {});
           } else if (!shouldPlay && !media.paused) {
             media.pause();
           }
 
-          if (Number.isFinite(targetTime) && Math.abs(media.currentTime - targetTime) > 3) {
+          // Drift correction
+          if (absDrift > ${DRIFT_HARD_THRESHOLD}) {
+            // Hard seek
             media.currentTime = targetTime;
+            if (shouldPlay) media.play().catch(() => {});
+            return { status: 'hard-seek', drift };
+          } else if (absDrift > ${DRIFT_SOFT_THRESHOLD}) {
+            // Rate nudge — speed up or slow down to converge
+            media.playbackRate = drift > 0 ? 0.92 : 1.08;
+            return { status: 'rate-nudge', rate: media.playbackRate, drift };
+          } else {
+            /* Within acceptable range — restore normal speed */
+            if (media.playbackRate !== 1) media.playbackRate = 1;
+            return { status: 'ok', drift };
           }
-        } catch (e) {}
+        } catch (e) {
+          return { status: 'error', error: e.message };
+        }
       })()
     `;
-    await mainWindowRef.webContents.executeJavaScript(script).catch(() => {});
+
+    const result = await mainWindowRef.webContents
+      .executeJavaScript(script)
+      .catch(() => null);
+    if (result && result.status !== "ok") {
+      console.log(
+        `[ListenAlong] Sync: ${result.status} drift=${result.drift?.toFixed(3)}s`,
+      );
+    }
   } catch (err) {
     console.error("[ListenAlong] Sync playback error:", err.message);
   }
@@ -215,8 +307,10 @@ async function createParty(serverUrl, hostName) {
 
   socket = io(cleanUrl, { transports: ["websocket", "polling"] });
 
-  socket.on("connect", () => {
-    console.log("[ListenAlong] Socket connected, registering as host");
+  socket.on("connect", async () => {
+    console.log("[ListenAlong] Socket connected, syncing clock...");
+    await syncClock(socket);
+    console.log("[ListenAlong] Registering as host");
     socket.emit("party:host-connect", { partyId, hostToken });
   });
 
@@ -278,6 +372,8 @@ async function closeParty() {
   currentMembers = [];
   lastSongState = null;
   lastNavigatedVideoId = null;
+  clockOffset = 0;
+  clockSyncDone = false;
   notifyStateChange();
 }
 
@@ -299,9 +395,11 @@ async function joinParty(serverUrl, partyId, guestName) {
       timeout: 8000,
     });
 
-    socket.on("connect", () => {
+    socket.on("connect", async () => {
+      console.log(`[ListenAlong] Socket connected, syncing clock...`);
+      await syncClock(socket);
       console.log(
-        `[ListenAlong] Socket connected, joining party ${cleanPartyId} as "${cleanName}"`,
+        `[ListenAlong] Joining party ${cleanPartyId} as "${cleanName}"`,
       );
       socket.emit("party:join", {
         partyId: cleanPartyId,
@@ -385,6 +483,8 @@ async function leaveParty() {
   currentMembers = [];
   lastSongState = null;
   lastNavigatedVideoId = null;
+  clockOffset = 0;
+  clockSyncDone = false;
   notifyStateChange();
 }
 
