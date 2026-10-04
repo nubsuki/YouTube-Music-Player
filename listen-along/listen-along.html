@@ -150,6 +150,12 @@
 
       <!-- Host tab -->
       <div id="pane-host" style="display:none; flex-direction:column; gap:12px;">
+        <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom: 4px;">
+          <div style="display:flex; align-items:center; gap: 8px;">
+            <input type="checkbox" id="auto-host-cb" style="accent-color: var(--accent); cursor:pointer;" />
+            <label for="auto-host-cb" style="font-size: 13px; color: var(--text-sec); cursor:pointer;">Always host a party</label>
+          </div>
+        </div>
         <button class="btn btn-primary" id="start-btn" onclick="startParty()">
           <svg class="icon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor"
             stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -316,6 +322,32 @@
         </svg>
         <span>Close Party</span>
       </button>
+
+      <!-- Join while hosting -->
+      <div id="join-while-host" style="display:none; flex-direction:column; gap:8px; margin-top:4px;">
+        <div style="height:1px; background:rgba(255,255,255,0.07); margin: 2px 0;"></div>
+        <div class="section-label" style="font-size:11px;">Join a friend's party instead</div>
+        <div class="party-code-input-wrap">
+          <input type="text" class="party-code-input" id="join-while-host-code"
+            placeholder="ABC123" maxlength="6" autocomplete="off" spellcheck="false" />
+          <button class="paste-btn" id="join-while-host-paste">
+            <svg class="icon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+              stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+              <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+            </svg>
+            <span>Paste</span>
+          </button>
+        </div>
+        <button class="btn btn-secondary btn-sm" id="join-while-host-btn">
+          <svg class="icon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+            stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M3 18v-6a9 9 0 0 1 18 0v6"></path>
+            <path d="M21 19a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3zM3 19a2 2 0 0 0 2 2h1a2 2 0 0 0 2-2v-3a2 2 0 0 0-2-2H3z"></path>
+          </svg>
+          <span>Stop Hosting & Join</span>
+        </button>
+      </div>
     </div>
   </div>
 
@@ -380,6 +412,11 @@
     async function init() {
       const cfg = await api.getConfig();
       if (cfg.hostName) document.getElementById('display-name').value = cfg.hostName;
+      if (cfg.autoHost) document.getElementById('auto-host-cb').checked = true;
+
+      document.getElementById('auto-host-cb').addEventListener('change', (e) => {
+        api.saveConfig({ autoHost: e.target.checked });
+      });
 
       const codeInp = document.getElementById('join-code');
       codeInp.addEventListener('input', () => {
@@ -400,6 +437,24 @@
       const state = await api.getState();
       renderState(state);
       api.onStateChange(renderState);
+
+      // join-while-hosting panel wiring
+      const jwCode = document.getElementById('join-while-host-code');
+      jwCode.addEventListener('input', () => {
+        jwCode.value = jwCode.value.toUpperCase().replace(/[^A-Z0-9]/g, '');
+      });
+      jwCode.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') joinWhileHosting();
+      });
+
+      document.getElementById('join-while-host-paste').addEventListener('click', async () => {
+        try {
+          const text = await api.readClipboard();
+          if (text) jwCode.value = text.trim().toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 6);
+        } catch (e) { }
+      });
+
+      document.getElementById('join-while-host-btn').addEventListener('click', joinWhileHosting);
     }
 
     /* Render state */
@@ -431,12 +486,14 @@
           openPageBtn.style.display = 'inline-flex';
           leaveCloseBtn.innerHTML = `${ICONS.stop}<span>Close Party</span>`;
           leaveCloseBtn.className = 'btn btn-danger';
+          document.getElementById('join-while-host').style.display = 'flex';
         } else {
           roleText.innerHTML = `${ICONS.headphones}<span>Joined Party</span>`;
           hostInd.textContent = state.hostName ? `Host: ${state.hostName}` : 'Guest';
           openPageBtn.style.display = 'none';
           leaveCloseBtn.innerHTML = `${ICONS.logout}<span>Leave Party</span>`;
           leaveCloseBtn.className = 'btn btn-ghost';
+          document.getElementById('join-while-host').style.display = 'none';
         }
       } else {
         inactive.style.display = 'flex';
@@ -555,6 +612,31 @@
         await api.closeParty();
       } else {
         await api.leaveParty();
+      }
+    }
+
+    async function joinWhileHosting() {
+      const btn = document.getElementById('join-while-host-btn');
+      const code = document.getElementById('join-while-host-code').value.trim().toUpperCase();
+      const guestName = document.getElementById('display-name').value.trim();
+
+      if (!code || code.length < 3) {
+        showError('Enter a valid party code.');
+        return;
+      }
+      if (!guestName) {
+        showError('Please enter a display name first.');
+        return;
+      }
+
+      btn.disabled = true;
+      btn.innerHTML = `${ICONS.spinner}<span>Switching…</span>`;
+      try {
+        await api.joinParty(code, guestName);
+      } catch (err) {
+        showError(err.message || 'Party not found or ended.');
+        btn.disabled = false;
+        btn.innerHTML = `${ICONS.headphones}<span>Stop Hosting & Join</span>`;
       }
     }
 

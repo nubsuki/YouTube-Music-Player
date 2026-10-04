@@ -1,4 +1,5 @@
 const { io } = require("socket.io-client");
+const { Notification } = require("electron");
 
 const DEFAULT_SERVER_URL = "https://ytms.nubsuki.xyz";
 
@@ -10,6 +11,9 @@ let broadcastInterval = null;
 let mainWindowRef = null;
 let onStateChangeCb = null;
 let lastNavigatedVideoId = null;
+let autoHostEnabled = false;
+let autoHostName = "";
+let isConnecting = false;
 
 // Clock sync state
 let clockOffset = 0;
@@ -320,9 +324,18 @@ async function createParty(serverUrl, hostName) {
     notifyStateChange();
   });
 
-  socket.on("party:member-joined", ({ members }) => {
+  socket.on("party:member-joined", ({ member, members }) => {
     currentMembers = members || [];
     notifyStateChange();
+    if (member && member.name) {
+      try {
+        new Notification({
+          title: "Listen Along",
+          body: `${member.name} joined your party!`,
+          silent: true,
+        }).show();
+      } catch (e) {}
+    }
   });
 
   socket.on("party:member-left", ({ members }) => {
@@ -336,6 +349,9 @@ async function createParty(serverUrl, hostName) {
 
   socket.on("disconnect", () => {
     console.warn("[ListenAlong] Socket disconnected");
+    if (currentParty && currentParty.role === "host") {
+      closeParty(); // Triggers auto-host evaluation
+    }
   });
 
   return partyId;
@@ -375,6 +391,8 @@ async function closeParty() {
   clockOffset = 0;
   clockSyncDone = false;
   notifyStateChange();
+
+  evaluateAutoHost();
 }
 
 // Guest party lifecycle
@@ -390,6 +408,7 @@ async function joinParty(serverUrl, partyId, guestName) {
   return new Promise((resolve, reject) => {
     let settled = false;
 
+    isConnecting = true;
     socket = io(cleanUrl, {
       transports: ["websocket", "polling"],
       timeout: 8000,
@@ -410,6 +429,7 @@ async function joinParty(serverUrl, partyId, guestName) {
     socket.on("party:joined", ({ partyId: pid, hostName, state, members }) => {
       if (settled) return;
       settled = true;
+      isConnecting = false;
 
       currentParty = {
         role: "guest",
@@ -450,6 +470,7 @@ async function joinParty(serverUrl, partyId, guestName) {
     socket.on("party:error", ({ message }) => {
       if (!settled) {
         settled = true;
+        isConnecting = false;
         if (socket) {
           socket.disconnect();
           socket = null;
@@ -461,11 +482,20 @@ async function joinParty(serverUrl, partyId, guestName) {
     socket.on("connect_error", () => {
       if (!settled) {
         settled = true;
+        isConnecting = false;
         if (socket) {
           socket.disconnect();
           socket = null;
         }
         reject(new Error("Could not connect to sync server."));
+        evaluateAutoHost();
+      }
+    });
+
+    socket.on("disconnect", () => {
+      console.warn("[ListenAlong] Guest socket disconnected");
+      if (currentParty && currentParty.role === "guest") {
+        leaveParty(); // will evaluate auto host inside
       }
     });
   });
@@ -486,6 +516,8 @@ async function leaveParty() {
   clockOffset = 0;
   clockSyncDone = false;
   notifyStateChange();
+
+  evaluateAutoHost();
 }
 
 async function resetParty() {
@@ -508,6 +540,24 @@ function initListenAlong(mainWindow, onStateChange) {
   onStateChangeCb = onStateChange;
 }
 
+function setAutoHost(enabled, hostName) {
+  autoHostEnabled = !!enabled;
+  if (hostName !== undefined) autoHostName = hostName;
+  evaluateAutoHost();
+}
+
+function evaluateAutoHost() {
+  if (autoHostEnabled && !currentParty && !isConnecting) {
+    // default to 'Host' if name is entirely empty to prevent blank hosts
+    const nameToUse = (autoHostName || "").trim() || "Host";
+    setTimeout(() => {
+      if (autoHostEnabled && !currentParty && !isConnecting) {
+        createParty(DEFAULT_SERVER_URL, nameToUse).catch(console.error);
+      }
+    }, 500);
+  }
+}
+
 module.exports = {
   DEFAULT_SERVER_URL,
   initListenAlong,
@@ -516,4 +566,5 @@ module.exports = {
   joinParty,
   leaveParty,
   getListenAlongState,
+  setAutoHost,
 };

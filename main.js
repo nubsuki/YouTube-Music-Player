@@ -51,6 +51,7 @@ let miniPlayerAlwaysOnTop = true;
 let listenAlongWindow = null;
 let listenAlongServerUrl = DEFAULT_SERVER_URL;
 let listenAlongHostName = "";
+let listenAlongAutoHost = false;
 
 function ensureWindowIsVisible(bounds, defaultBounds) {
   if (bounds.x === undefined || bounds.y === undefined) return defaultBounds;
@@ -154,6 +155,7 @@ async function loadConfig() {
     // Listen Along config
     listenAlongServerUrl = config.listenAlongServerUrl || DEFAULT_SERVER_URL;
     listenAlongHostName = config.listenAlongHostName || "";
+    listenAlongAutoHost = !!config.listenAlongAutoHost;
 
     console.log(
       `Config loaded - Minimize to tray: ${minimizeToTray}, Video ad skipper: ${videoAdSkipperEnabled}, Video ad skip speed: ${VideoAdSkipSpeed}, Last URL: ${lastUrl}, Open last song: ${openLastSong}, Resume playback: ${resumePlayback}, Mini-player bounds: ${JSON.stringify(miniPlayerBounds)}, Main window bounds: ${JSON.stringify(mainWindowBounds)}, Mini-player theme: ${miniPlayerTheme}`,
@@ -181,6 +183,7 @@ async function saveConfig() {
       miniPlayerAlwaysOnTop: miniPlayerAlwaysOnTop,
       listenAlongServerUrl: listenAlongServerUrl,
       listenAlongHostName: listenAlongHostName,
+      listenAlongAutoHost: listenAlongAutoHost,
     };
 
     await fs.mkdir(path.dirname(CONFIG_FILE), { recursive: true });
@@ -272,10 +275,30 @@ _la_ipc().handle("la:get-state", () => getListenAlongState());
 _la_ipc().handle("la:get-config", () => ({
   serverUrl: DEFAULT_SERVER_URL,
   hostName: listenAlongHostName,
+  autoHost: listenAlongAutoHost,
 }));
 
-_la_ipc().on("la:save-config", (_e, { hostName }) => {
-  if (hostName !== undefined) listenAlongHostName = hostName;
+_la_ipc().on("la:save-config", (_e, { hostName, autoHost }) => {
+  let nameChanged = false;
+  if (hostName !== undefined && listenAlongHostName !== hostName) {
+    listenAlongHostName = hostName;
+    nameChanged = true;
+  }
+  if (autoHost !== undefined) {
+    listenAlongAutoHost = !!autoHost;
+  }
+  
+  require("./listen-along/listenAlong").setAutoHost(listenAlongAutoHost, listenAlongHostName);
+  
+  // Force restart party if name changed while actively auto-hosting
+  if (nameChanged && listenAlongAutoHost) {
+    const { getListenAlongState, closeParty } = require("./listen-along/listenAlong");
+    const state = getListenAlongState();
+    if (state.isActive && state.isHost) {
+      closeParty(); // will auto-restart with new name
+    }
+  }
+
   saveConfig();
 });
 
@@ -308,6 +331,17 @@ function pushListenAlongState(state) {
   if (listenAlongWindow && !listenAlongWindow.isDestroyed()) {
     listenAlongWindow.webContents.send("la:state-changed", state);
   }
+  
+  // Update main menu label
+  try {
+    const menu = Menu.getApplicationMenu();
+    if (menu) {
+      const laItem = menu.getMenuItemById("listen-along-menu");
+      if (laItem) {
+        laItem.label = state && state.isActive ? "Listen Along 🔴" : "Listen Along";
+      }
+    }
+  } catch (e) {}
 }
 
 async function loadLanguage(lang) {
@@ -1090,6 +1124,7 @@ function createMenu() {
     },
     {
       label: "Listen Along",
+      id: "listen-along-menu",
       click: () => {
         createListenAlongWindow();
       },
@@ -1399,6 +1434,9 @@ async function createWindow() {
     });
     initDiscordRpc(mainWindow);
     initListenAlong(mainWindow, pushListenAlongState);
+    if (listenAlongAutoHost) {
+      require("./listen-along/listenAlong").setAutoHost(true, listenAlongHostName);
+    }
 
     // Inject JavaScript to auto-continue listening
     mainWindow.webContents.executeJavaScript(`

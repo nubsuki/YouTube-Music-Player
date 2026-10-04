@@ -73,9 +73,11 @@ function setDiscordActivity(
     activity.startTimestamp = appLaunchTimestamp;
   }
 
+  const truncate = (str, len) => str.length > len ? str.substring(0, len - 3) + "..." : str;
+
   if (isPlaying) {
-    activity.details = Title;
-    activity.state = `by ${Artist}`;
+    activity.details = truncate(Title, 128);
+    activity.state = truncate(`by ${Artist}`, 128);
     activity.largeImageKey = albumArtUrl || "icon";
   } else {
     activity.details = "YouTube Music by nubsuki";
