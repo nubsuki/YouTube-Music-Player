@@ -41,6 +41,7 @@ A simple desktop application for **YouTube Music**.
 
 ![status](assets/ostatus.png)
 ![pstatus](assets/pstatus.png)
+![Listen Along discord status](assets/discordstatus.png)
 
 ## Mini Player
 
