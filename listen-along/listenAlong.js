@@ -15,6 +15,9 @@ let autoHostEnabled = false;
 let autoHostName = "";
 let isConnecting = false;
 let isNavigating = false;
+let lastNavAttemptAt = 0;
+let navTargetId = null;
+let navAttempts = 0;
 
 // Clock sync state
 let clockOffset = 0;
@@ -224,14 +227,151 @@ function extractVideoId(url) {
   }
 }
 
+// Guest controls lock (gray out pause/skip/seek; volume stays usable)
+async function setGuestLock(locked) {
+  if (!mainWindowRef || mainWindowRef.isDestroyed()) return;
+  const script = locked
+    ? `
+    (() => {
+      if (!document.getElementById('la-lock-style')) {
+        const st = document.createElement('style');
+        st.id = 'la-lock-style';
+        st.textContent = \`
+          ytmusic-player-bar .previous-button,
+          ytmusic-player-bar .play-pause-button,
+          ytmusic-player-bar .next-button,
+          ytmusic-player-bar #progress-bar,
+          ytmusic-player-bar .repeat,
+          ytmusic-player-bar .shuffle {
+            pointer-events: none !important;
+            opacity: 0.35 !important;
+            filter: grayscale(1);
+          }\`;
+        document.head.appendChild(st);
+      }
+      if (!window.__laKeyBlock) {
+        const blocked = [' ', 'k', 'K', 'j', 'J', 'l', 'L', 'ArrowLeft', 'ArrowRight', 'MediaTrackNext', 'MediaTrackPrevious', 'MediaPlayPause'];
+        window.__laKeyBlock = (e) => {
+          const t = e.target;
+          if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
+          const isTrackKey = e.shiftKey && (e.key === 'N' || e.key === 'P');
+          if (blocked.includes(e.key) || isTrackKey) {
+            e.preventDefault();
+            e.stopImmediatePropagation();
+          }
+        };
+        window.addEventListener('keydown', window.__laKeyBlock, true);
+      }
+    })()`
+    : `
+    (() => {
+      const st = document.getElementById('la-lock-style');
+      if (st) st.remove();
+      if (window.__laKeyBlock) {
+        window.removeEventListener('keydown', window.__laKeyBlock, true);
+        window.__laKeyBlock = null;
+      }
+    })()`;
+  try {
+    await mainWindowRef.webContents.executeJavaScript(script);
+  } catch {}
+}
+
+// Read the video ID the guest's real player is on
+async function getGuestPlayerVideoId() {
+  try {
+    return await mainWindowRef.webContents.executeJavaScript(`
+      (() => {
+        const p = document.getElementById('movie_player');
+        return p && p.getVideoData ? (p.getVideoData().video_id || null) : null;
+      })()
+    `);
+  } catch {
+    return null;
+  }
+}
+
+async function waitForTrack(id, timeoutMs) {
+  const end = Date.now() + timeoutMs;
+  while (Date.now() < end) {
+    await new Promise((r) => setTimeout(r, 400));
+    if ((await getGuestPlayerVideoId()) === id) return true;
+  }
+  return false;
+}
+
+// In-app navigation methods
+const NAV_METHODS = ["navigate", "yt-navigate"];
+const navStats = {
+  navigate: { fails: 0, worked: false },
+  "yt-navigate": { fails: 0, worked: false },
+};
+
+function usableNavMethods() {
+  const list = NAV_METHODS.filter(
+    (m) => navStats[m].worked || navStats[m].fails < 2,
+  );
+  return list.sort(
+    (x, y) => Number(navStats[y].worked) - Number(navStats[x].worked),
+  );
+}
+
+async function fireInPageNav(id, method) {
+  return mainWindowRef.webContents
+    .executeJavaScript(
+      `
+      (() => {
+        const id = ${JSON.stringify(id)};
+        const method = ${JSON.stringify(method)};
+        const app = document.querySelector('ytmusic-app');
+        if (!app) return { fired: false };
+        // Full endpoint, the way YT Music's own links carry it
+        const endpoint = {
+          clickTrackingParams: '',
+          commandMetadata: {
+            webCommandMetadata: {
+              url: '/watch?v=' + id,
+              webPageType: 'MUSIC_PAGE_TYPE_UNKNOWN',
+              rootVe: 0,
+            },
+          },
+          watchEndpoint: {
+            videoId: id,
+            watchEndpointMusicSupportedConfigs: {
+              watchEndpointMusicConfig: { musicVideoType: 'MUSIC_VIDEO_TYPE_ATV' },
+            },
+          },
+        };
+        try {
+          if (method === 'navigate' && typeof app.navigate === 'function') {
+            app.navigate(endpoint);
+            return { fired: true };
+          }
+          if (method === 'yt-navigate') {
+            app.dispatchEvent(new CustomEvent('yt-navigate', {
+              detail: { endpoint, replace: false },
+              bubbles: true,
+              composed: true,
+            }));
+            return { fired: true };
+          }
+        } catch (e) {}
+        return { fired: false };
+      })()
+    `,
+    )
+    .catch(() => ({ fired: false }));
+}
+
 // Core sync
 async function syncPlayback(state) {
   if (!mainWindowRef || mainWindowRef.isDestroyed() || !state) return;
   if (isNavigating) return; // Prevent script injection during navigation
+  setGuestLock(true);
 
   const safeUrl = isSafeYtMusicUrl(state.url) ? state.url : null;
   let hostVideoId = safeUrl ? extractVideoId(safeUrl) : null;
-  // Reject anything that isn't a real YouTube video ID (prevents script injection)
+  // Reject anything that isn't a real YouTube video ID
   if (hostVideoId && !/^[A-Za-z0-9_-]{11}$/.test(hostVideoId)) {
     console.warn("[ListenAlong] Ignoring invalid video ID from host");
     hostVideoId = null;
@@ -239,56 +379,85 @@ async function syncPlayback(state) {
 
   try {
     const currentUrl = mainWindowRef.webContents.getURL();
-    const guestVideoId = extractVideoId(currentUrl);
+    let guestVideoId = extractVideoId(currentUrl);
+    const playerId = await getGuestPlayerVideoId();
+    if (playerId) guestVideoId = playerId;
 
-    // Track changed — navigate first, sync will happen on next broadcast
-    if (
-      hostVideoId &&
-      hostVideoId !== guestVideoId &&
-      hostVideoId !== lastNavigatedVideoId
-    ) {
-      const targetUrl = `https://music.youtube.com/watch?v=${hostVideoId}`;
-      const idLiteral = JSON.stringify(hostVideoId);
-      const urlLiteral = JSON.stringify(targetUrl);
-
-      console.log(`[ListenAlong] Guest syncing track: ${targetUrl}`);
-
-      isNavigating = true;
-      try {
-        await mainWindowRef.webContents.executeJavaScript(`
-          (() => {
-            const player = document.getElementById('movie_player');
-            if (player && typeof player.loadVideoById === 'function') {
-              player.loadVideoById(${idLiteral});
-              try { window.history.replaceState(null, '', '/watch?v=' + ${idLiteral}); } catch (e) {}
-            } else {
-              window.location.href = ${urlLiteral};
-            }
-          })()
-        `);
-        lastNavigatedVideoId = hostVideoId; // only remember it once it worked
-      } catch (err) {
-        console.error(
-          "[ListenAlong] Fast navigation failed, falling back:",
-          err,
-        );
-        try {
-          await mainWindowRef.webContents.executeJavaScript(
-            `window.location.href = ${JSON.stringify(targetUrl)};`,
+    // Track changed: navigate so the YT Music UI updates too
+    if (hostVideoId && hostVideoId !== guestVideoId) {
+      if (hostVideoId !== navTargetId) {
+        navTargetId = hostVideoId;
+        navAttempts = 0;
+      }
+      // Cooldown + cap, so a stubborn failure can't loop forever
+      if (Date.now() - lastNavAttemptAt < 6000) return;
+      if (navAttempts >= 3) {
+        if (navAttempts === 3) {
+          navAttempts++;
+          console.warn(
+            "[ListenAlong] Giving up UI navigation, loading audio only",
           );
-          lastNavigatedVideoId = hostVideoId;
-        } catch {
           try {
-            await mainWindowRef.loadURL(targetUrl);
-            lastNavigatedVideoId = hostVideoId;
-          } catch {
-            lastNavigatedVideoId = null; // allow a retry on the next sync
+            await mainWindowRef.webContents.executeJavaScript(
+              `(() => { const p = document.getElementById('movie_player'); if (p && p.loadVideoById) p.loadVideoById(${JSON.stringify(hostVideoId)}); })()`,
+            );
+          } catch {}
+        }
+        return;
+      }
+      navAttempts++;
+      lastNavAttemptAt = Date.now();
+
+      const targetUrl = `https://music.youtube.com/watch?v=${hostVideoId}`;
+      console.log(
+        `[ListenAlong] Guest syncing track: ${targetUrl} (attempt ${navAttempts})`,
+      );
+      isNavigating = true;
+
+      try {
+        let ok = false;
+
+        // In-app methods first
+        for (const m of usableNavMethods()) {
+          if (ok) break;
+          const { fired } = await fireInPageNav(hostVideoId, m);
+          if (!fired) {
+            navStats[m].fails++;
+            continue;
+          }
+          ok = await waitForTrack(hostVideoId, 1800);
+          console.log(`[ListenAlong] In-app nav '${m}' verified=${ok}`);
+          if (ok) {
+            navStats[m].worked = true;
+            navStats[m].fails = 0;
+          } else {
+            navStats[m].fails++;
           }
         }
+
+        // Hard fallback: full page load
+        if (!ok) {
+          console.log("[ListenAlong] Falling back to page load");
+          try {
+            await mainWindowRef.webContents.executeJavaScript(
+              `window.location.assign(${JSON.stringify(targetUrl)})`,
+            );
+          } catch {
+            try {
+              await mainWindowRef.loadURL(targetUrl);
+            } catch (e) {
+              if (!e || (e.errno !== -3 && e.code !== "ERR_ABORTED")) throw e;
+            }
+          }
+        }
+
+        lastNavigatedVideoId = hostVideoId;
+      } catch (err) {
+        console.error("[ListenAlong] Navigation failed:", err);
       } finally {
         setTimeout(() => {
           isNavigating = false;
-        }, 2000);
+        }, 1500);
       }
       return;
     }
@@ -469,6 +638,8 @@ async function closeParty() {
   currentMembers = [];
   lastSongState = null;
   lastNavigatedVideoId = null;
+  navTargetId = null;
+  navAttempts = 0;
   clockOffset = 0;
   clockSyncDone = false;
   notifyStateChange();
@@ -522,6 +693,7 @@ async function joinParty(serverUrl, partyId, guestName) {
       currentMembers = members || [];
       lastSongState = state || null;
 
+      setGuestLock(true);
       if (state) syncPlayback(state);
       notifyStateChange();
       resolve({ partyId: pid, hostName });
@@ -585,6 +757,8 @@ async function joinParty(serverUrl, partyId, guestName) {
 async function leaveParty() {
   if (!currentParty) return;
 
+  await setGuestLock(false);
+
   if (socket) {
     socket.disconnect();
     socket = null;
@@ -594,6 +768,8 @@ async function leaveParty() {
   currentMembers = [];
   lastSongState = null;
   lastNavigatedVideoId = null;
+  navTargetId = null;
+  navAttempts = 0;
   clockOffset = 0;
   clockSyncDone = false;
   notifyStateChange();
