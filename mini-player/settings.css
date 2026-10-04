@@ -1,0 +1,246 @@
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+:root {
+  --bg: #090912;
+  --surface: rgba(255, 255, 255, 0.04);
+  --surface2: rgba(255, 255, 255, 0.07);
+  --border: rgba(255, 255, 255, 0.08);
+  --border-focus: rgba(227, 11, 92, 0.45);
+  --accent: #e30b5c;
+  --accent-glow: rgba(227, 11, 92, 0.3);
+  --accent2: #8b5cf6;
+  --text: #f0f0ff;
+  --text-muted: #71717a;
+  --text-dim: #a1a1aa;
+}
+
+html {
+  font-size: 14px;
+  -webkit-font-smoothing: antialiased;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  overflow: hidden;
+  user-select: none;
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+}
+
+body::before {
+  content: '';
+  position: fixed;
+  top: -40%;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 300px;
+  height: 200px;
+  background: radial-gradient(
+    ellipse,
+    rgba(227, 11, 92, 0.12) 0%,
+    rgba(139, 92, 246, 0.08) 50%,
+    transparent 75%
+  );
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* Titlebar */
+.titlebar {
+  -webkit-app-region: drag;
+  height: 34px;
+  display: flex;
+  align-items: center;
+  padding: 0 14px;
+  gap: 8px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+  background: rgba(9, 9, 18, 0.95);
+  backdrop-filter: blur(10px);
+  position: relative;
+  z-index: 1;
+}
+
+.titlebar-icon {
+  display: flex;
+  align-items: center;
+  color: var(--accent);
+}
+
+.titlebar-text {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-dim);
+  letter-spacing: 0.3px;
+}
+
+.close-btn {
+  -webkit-app-region: no-drag;
+  margin-left: auto;
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
+  transition: background 0.15s, color 0.15s;
+}
+
+.close-btn:hover {
+  background: rgba(239, 68, 68, 0.15);
+  color: #ef4444;
+}
+
+/* Content */
+.content {
+  flex: 1;
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  overflow: auto;
+  position: relative;
+  z-index: 1;
+}
+
+/* Section label */
+.section-label {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.8px;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  margin-bottom: 8px;
+}
+
+/* Theme options */
+.theme-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.theme-btn {
+  -webkit-app-region: no-drag;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text-dim);
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 500;
+  transition: border-color 0.15s, background 0.15s, color 0.15s, transform 0.1s;
+}
+
+.theme-btn:hover {
+  background: var(--surface2);
+  color: var(--text);
+}
+
+.theme-btn:active {
+  transform: scale(0.97);
+}
+
+.theme-btn.active {
+  border-color: var(--border-focus);
+  background: rgba(227, 11, 92, 0.08);
+  color: var(--text);
+}
+
+.swatch {
+  width: 20px;
+  height: 20px;
+  border-radius: 6px;
+  flex-shrink: 0;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+}
+
+.swatch.midnight {
+  background: #000;
+}
+
+.swatch.blur {
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.2), rgba(255, 255, 255, 0.05));
+}
+
+/* Toggle row */
+.toggle-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+}
+
+.toggle-label {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-dim);
+}
+
+/* Toggle switch */
+.switch {
+  -webkit-app-region: no-drag;
+  position: relative;
+  width: 36px;
+  height: 20px;
+  flex-shrink: 0;
+}
+
+.switch input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+  position: absolute;
+}
+
+.slider {
+  position: absolute;
+  inset: 0;
+  background: rgba(255, 255, 255, 0.12);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  cursor: pointer;
+  transition: background 0.2s, border-color 0.2s;
+}
+
+.slider::before {
+  content: '';
+  position: absolute;
+  width: 14px;
+  height: 14px;
+  left: 2px;
+  top: 2px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.7);
+  transition: transform 0.2s, background 0.2s;
+}
+
+.switch input:checked + .slider {
+  background: rgba(227, 11, 92, 0.4);
+  border-color: rgba(227, 11, 92, 0.55);
+}
+
+.switch input:checked + .slider::before {
+  transform: translateX(16px);
+  background: #fff;
+}

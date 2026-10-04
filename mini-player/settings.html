@@ -2,185 +2,58 @@
 <html lang="en">
 
 <head>
-    <meta charset="UTF-8">
-    <meta http-equiv="Content-Security-Policy" content="script-src 'self'">
-    <title>Mini Player Settings</title>
-    <link rel="stylesheet" href="mini-player.css">
-    <style>
-        * {
-            box-sizing: border-box;
-        }
-
-        body {
-            height: auto;
-            border-radius: 0;
-            padding: 12px;
-            background-color: var(--bg-color);
-            color: var(--text-color);
-        }
-
-        button,
-        input {
-            -webkit-app-region: no-drag;
-        }
-
-        .panel {
-            display: flex;
-            flex-direction: column;
-            gap: 12px;
-        }
-
-        .title {
-            font-size: 13px;
-            font-weight: 600;
-            opacity: 0.95;
-        }
-
-        .section {
-            background: rgba(255, 255, 255, 0.06);
-            border: 1px solid rgba(255, 255, 255, 0.10);
-            border-radius: 10px;
-            padding: 10px;
-        }
-
-        .label {
-            font-size: 11px;
-            opacity: 0.75;
-            margin-bottom: 8px;
-        }
-
-        .options {
-            display: grid;
-            grid-template-columns: repeat(2, 1fr);
-            gap: 8px;
-        }
-
-        .option-btn {
-            display: flex;
-            align-items: center;
-            justify-content: flex-start;
-            gap: 10px;
-            width: 100%;
-            padding: 10px;
-            border-radius: 10px;
-            border: 1px solid rgba(255, 255, 255, 0.10);
-            background: rgba(255, 255, 255, 0.06);
-            color: inherit;
-            cursor: pointer;
-            transition: transform 0.12s ease, border-color 0.12s ease;
-        }
-
-        .option-btn:active {
-            transform: scale(0.98);
-        }
-
-        .option-btn.active {
-            border-color: var(--accent-color, #fff);
-        }
-
-        .swatch {
-            width: 22px;
-            height: 22px;
-            border-radius: 7px;
-            flex: 0 0 auto;
-            border: 1px solid rgba(255, 255, 255, 0.18);
-        }
-
-        .swatch.midnight {
-            background: #000000;
-        }
-
-        .swatch.blur {
-            background: rgba(255, 255, 255, 0.16);
-        }
-
-        .row {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            gap: 10px;
-        }
-
-        .row-label {
-            font-size: 12px;
-            opacity: 0.9;
-        }
-
-        .switch {
-            position: relative;
-            width: 44px;
-            height: 24px;
-            flex: 0 0 auto;
-        }
-
-        .switch input {
-            opacity: 0;
-            width: 0;
-            height: 0;
-        }
-
-        .slider {
-            position: absolute;
-            inset: 0;
-            background: rgba(255, 255, 255, 0.18);
-            border: 1px solid rgba(255, 255, 255, 0.18);
-            border-radius: 999px;
-            transition: background 0.15s ease;
-        }
-
-        .slider:before {
-            content: "";
-            position: absolute;
-            width: 18px;
-            height: 18px;
-            left: 3px;
-            top: 2px;
-            border-radius: 999px;
-            background: rgba(255, 255, 255, 0.9);
-            transition: transform 0.15s ease;
-        }
-
-        .switch input:checked + .slider {
-            background: rgba(255, 88, 88, 0.45);
-            border-color: rgba(255, 88, 88, 0.55);
-        }
-
-        .switch input:checked + .slider:before {
-            transform: translateX(20px);
-        }
-    </style>
+  <meta charset="UTF-8">
+  <meta http-equiv="Content-Security-Policy" content="script-src 'self'">
+  <title>Mini Player Settings</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="settings.css" />
 </head>
 
-<body class="midnight">
-    <div class="panel">
-        <div class="title" id="theme-title">Mini player settings</div>
+<body>
+  <div class="titlebar">
+    <span class="titlebar-icon">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
+        stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="12" cy="12" r="3" />
+        <path d="M19.07 4.93a10 10 0 0 1 0 14.14M4.93 4.93a10 10 0 0 0 0 14.14" />
+      </svg>
+    </span>
+    <span class="titlebar-text" id="title-text">Mini Player Settings</span>
+    <button class="close-btn" id="close-btn" title="Close">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
+        stroke-linecap="round">
+        <line x1="18" y1="6" x2="6" y2="18"></line>
+        <line x1="6" y1="6" x2="18" y2="18"></line>
+      </svg>
+    </button>
+  </div>
 
-        <div class="section">
-            <div class="label" data-i18n="theme">Theme</div>
-            <div class="options" id="theme-options">
-                <button type="button" class="option-btn" data-theme="midnight">
-                    <span class="swatch midnight"></span>
-                    <span data-i18n="theme_midnight">Midnight</span>
-                </button>
-                <button type="button" class="option-btn" data-theme="blur">
-                    <span class="swatch blur"></span>
-                    <span data-i18n="theme_blur">Blur</span>
-                </button>
-            </div>
-        </div>
-
-        <div class="section">
-            <div class="row">
-                <span class="row-label" data-i18n="always_on_top">Always on top</span>
-                <label class="switch">
-                    <input id="always-on-top" type="checkbox" />
-                    <span class="slider"></span>
-                </label>
-            </div>
-        </div>
+  <div class="content">
+    <div>
+      <div class="section-label" id="theme-label" data-i18n="theme">Theme</div>
+      <div class="theme-grid" id="theme-options">
+        <button type="button" class="theme-btn" data-theme="midnight">
+          <span class="swatch midnight"></span>
+          <span data-i18n="theme_midnight">Midnight</span>
+        </button>
+        <button type="button" class="theme-btn" data-theme="blur">
+          <span class="swatch blur"></span>
+          <span data-i18n="theme_blur">Blur</span>
+        </button>
+      </div>
     </div>
 
-    <script src="settings.js"></script>
+    <div class="toggle-row">
+      <span class="toggle-label" data-i18n="always_on_top">Always on top</span>
+      <label class="switch">
+        <input id="always-on-top" type="checkbox" />
+        <span class="slider"></span>
+      </label>
+    </div>
+  </div>
+
+  <script src="settings.js"></script>
 </body>
 
 </html>

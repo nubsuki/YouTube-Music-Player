@@ -1,7 +1,10 @@
-const themeOpts = document.querySelectorAll('.option-btn[data-theme]');
-const themeTitle = document.getElementById('theme-title');
+const themeOpts = document.querySelectorAll('.theme-btn[data-theme]');
+const themeTitle = document.getElementById('title-text');
 const labels = document.querySelectorAll('[data-i18n]');
 const alwaysOnTopEl = document.getElementById('always-on-top');
+const closeBtn = document.getElementById('close-btn');
+
+if (closeBtn) closeBtn.addEventListener('click', () => window.close());
 
 async function applyTranslations() {
     try {

@@ -8,6 +8,9 @@ const {
   dialog,
   screen,
 } = require("electron");
+
+app.commandLine.appendSwitch("autoplay-policy", "no-user-gesture-required");
+
 const { autoUpdater } = require("electron-updater");
 const path = require("path");
 const fs = require("fs").promises;
@@ -22,6 +25,15 @@ const {
 } = require("./adblock/filters");
 const { injectVideoAdSkipper } = require("./adblock/videoAdSkipper");
 const { initDiscordRpc } = require("./integrations/discordRpc");
+const {
+  initListenAlong,
+  createParty,
+  closeParty,
+  joinParty,
+  leaveParty,
+  getListenAlongState,
+  DEFAULT_SERVER_URL,
+} = require("./listen-along/listenAlong");
 
 let mainWindow;
 let settingsWindow;
@@ -38,6 +50,12 @@ let mainWindowBounds = { x: undefined, y: undefined, width: 1200, height: 800 };
 let miniPlayerTheme = "blur";
 let miniPlayerAlwaysOnTop = true;
 
+// Listen Along
+let listenAlongWindow = null;
+let listenAlongServerUrl = DEFAULT_SERVER_URL;
+let listenAlongHostName = "";
+let listenAlongAutoHost = false;
+
 function ensureWindowIsVisible(bounds, defaultBounds) {
   if (bounds.x === undefined || bounds.y === undefined) return defaultBounds;
 
@@ -47,7 +65,6 @@ function ensureWindowIsVisible(bounds, defaultBounds) {
   const displays = screen.getAllDisplays();
   const isVisible = displays.some((display) => {
     const { x, y, width: dWidth, height: dHeight } = display.bounds;
-    // Check if at least 50px of the window is visible on this display
     const visibleX =
       Math.max(bounds.x, x) < Math.min(bounds.x + width, x + dWidth);
     const visibleY =
@@ -138,6 +155,11 @@ async function loadConfig() {
         ? !!config.miniPlayerAlwaysOnTop
         : true;
 
+    // Listen Along config
+    listenAlongServerUrl = config.listenAlongServerUrl || DEFAULT_SERVER_URL;
+    listenAlongHostName = config.listenAlongHostName || "";
+    listenAlongAutoHost = !!config.listenAlongAutoHost;
+
     console.log(
       `Config loaded - Minimize to tray: ${minimizeToTray}, Video ad skipper: ${videoAdSkipperEnabled}, Video ad skip speed: ${VideoAdSkipSpeed}, Last URL: ${lastUrl}, Open last song: ${openLastSong}, Resume playback: ${resumePlayback}, Mini-player bounds: ${JSON.stringify(miniPlayerBounds)}, Main window bounds: ${JSON.stringify(mainWindowBounds)}, Mini-player theme: ${miniPlayerTheme}`,
     );
@@ -162,6 +184,9 @@ async function saveConfig() {
       mainWindowBounds: mainWindowBounds,
       miniPlayerTheme: miniPlayerTheme,
       miniPlayerAlwaysOnTop: miniPlayerAlwaysOnTop,
+      listenAlongServerUrl: listenAlongServerUrl,
+      listenAlongHostName: listenAlongHostName,
+      listenAlongAutoHost: listenAlongAutoHost,
     };
 
     await fs.mkdir(path.dirname(CONFIG_FILE), { recursive: true });
@@ -174,6 +199,154 @@ async function saveConfig() {
 }
 
 // Load a specific language file
+
+// Listen Along window
+function createListenAlongWindow() {
+  if (listenAlongWindow && !listenAlongWindow.isDestroyed()) {
+    listenAlongWindow.focus();
+    return;
+  }
+
+  listenAlongWindow = new BrowserWindow({
+    width: 430,
+    height: 580,
+    parent: mainWindow && !mainWindow.isDestroyed() ? mainWindow : undefined,
+    modal: false,
+    show: false,
+    resizable: false,
+    minimizable: false,
+    maximizable: false,
+    frame: false,
+    titleBarStyle: "hidden",
+    title: "Listen Along",
+    webPreferences: {
+      preload: path.join(__dirname, "listen-along/listen-along-preload.js"),
+      nodeIntegration: false,
+      contextIsolation: true,
+    },
+    icon: iconPath,
+  });
+
+  listenAlongWindow.setMenu(null);
+  listenAlongWindow.loadFile(
+    path.join(__dirname, "listen-along/listen-along.html"),
+  );
+
+  listenAlongWindow.once("ready-to-show", () => listenAlongWindow.show());
+
+  listenAlongWindow.on("closed", () => {
+    listenAlongWindow = null;
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.focus();
+    }
+  });
+}
+
+// Listen Along IPC handlers
+const { clipboard } = require("electron");
+
+function _la_ipc() {
+  return require("electron").ipcMain;
+}
+
+_la_ipc().handle("la:create-party", async (_e, { hostName }) => {
+  const partyId = await createParty(
+    DEFAULT_SERVER_URL,
+    hostName || listenAlongHostName,
+  );
+  return { partyId };
+});
+
+_la_ipc().handle("la:join-party", async (_e, { partyId, guestName }) => {
+  return await joinParty(
+    DEFAULT_SERVER_URL,
+    partyId,
+    guestName || listenAlongHostName,
+  );
+});
+
+_la_ipc().handle("la:close-party", async () => {
+  await closeParty();
+});
+
+_la_ipc().handle("la:leave-party", async () => {
+  await leaveParty();
+});
+
+_la_ipc().handle("la:get-state", () => getListenAlongState());
+
+_la_ipc().handle("la:get-config", () => ({
+  serverUrl: DEFAULT_SERVER_URL,
+  hostName: listenAlongHostName,
+  autoHost: listenAlongAutoHost,
+}));
+
+_la_ipc().on("la:save-config", (_e, { hostName, autoHost }) => {
+  let nameChanged = false;
+  if (hostName !== undefined && listenAlongHostName !== hostName) {
+    listenAlongHostName = hostName;
+    nameChanged = true;
+  }
+  if (autoHost !== undefined) {
+    listenAlongAutoHost = !!autoHost;
+  }
+  
+  require("./listen-along/listenAlong").setAutoHost(listenAlongAutoHost, listenAlongHostName);
+  
+  // Force restart party if name changed while actively auto-hosting
+  if (nameChanged && listenAlongAutoHost) {
+    const { getListenAlongState, closeParty } = require("./listen-along/listenAlong");
+    const state = getListenAlongState();
+    if (state.isActive && state.isHost) {
+      closeParty(); // will auto-restart with new name
+    }
+  }
+
+  saveConfig();
+});
+
+_la_ipc().on("la:open-party-page", (_e, { partyId }) => {
+  const url = DEFAULT_SERVER_URL.replace(/\/$/, "");
+  shell.openExternal(`${url}/party/${partyId}`).catch(console.error);
+});
+
+_la_ipc().on("la:copy-text", (_e, text) => {
+  clipboard.writeText(String(text));
+});
+
+_la_ipc().handle("la:read-clipboard", () => {
+  try {
+    const text = clipboard.readText();
+    return typeof text === "string" ? text.trim() : "";
+  } catch (e) {
+    return "";
+  }
+});
+
+_la_ipc().on("la:close-window", () => {
+  if (listenAlongWindow && !listenAlongWindow.isDestroyed()) {
+    listenAlongWindow.close();
+  }
+});
+
+// Push state change events to the Listen Along window
+function pushListenAlongState(state) {
+  if (listenAlongWindow && !listenAlongWindow.isDestroyed()) {
+    listenAlongWindow.webContents.send("la:state-changed", state);
+  }
+  
+  // Update main menu label
+  try {
+    const menu = Menu.getApplicationMenu();
+    if (menu) {
+      const laItem = menu.getMenuItemById("listen-along-menu");
+      if (laItem) {
+        laItem.label = state && state.isActive ? "Listen Along 🔴" : "Listen Along";
+      }
+    }
+  } catch (e) {}
+}
+
 async function loadLanguage(lang) {
   // Try to load the language file from the 'locales' directory
   const langPath = path.join(__dirname, "locales", `${lang}.json`);
@@ -210,7 +383,8 @@ function createSettingsWindow() {
     width: 800,
     height: 600,
     parent: mainWindow,
-    modal: true,
+    modal: false,
+    frame: false,
     show: false,
     resizable: false,
     webPreferences: {
@@ -232,6 +406,9 @@ function createSettingsWindow() {
 
   settingsWindow.on("closed", () => {
     settingsWindow = null;
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.focus();
+    }
   });
 
   return settingsWindow;
@@ -333,7 +510,7 @@ function createMiniPlayerWindow() {
     }
   };
 
-  miniPlayerWindow.on("move", saveMiniPlayerPosition);
+  miniPlayerWindow.on("moved", saveMiniPlayerPosition);
   miniPlayerWindow.on("hide", saveMiniPlayerPosition);
   miniPlayerWindow.on("close", saveMiniPlayerPosition);
   miniPlayerWindow.on("closed", () => {
@@ -541,10 +718,10 @@ function createMiniPlayerSettingsWindow() {
 
   miniPlayerSettingsWindow = new BrowserWindow({
     width: 250,
-    height: 250,
+    height: 190,
     parent: parentWindow,
-    modal: !!parentWindow,
-    frame: true,
+    modal: false,
+    frame: false,
     resizable: false,
     show: false,
     title: t("mini_player_settings"),
@@ -567,11 +744,22 @@ function createMiniPlayerSettingsWindow() {
 
   miniPlayerSettingsWindow.on("closed", () => {
     miniPlayerSettingsWindow = null;
+    if (miniPlayerWindow && !miniPlayerWindow.isDestroyed()) {
+      miniPlayerWindow.focus();
+    } else if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.focus();
+    }
   });
 }
 
 ipcMain.on("open-mini-player-settings", () => {
   createMiniPlayerSettingsWindow();
+});
+
+ipcMain.on("close-mini-player-settings", () => {
+  if (miniPlayerSettingsWindow && !miniPlayerSettingsWindow.isDestroyed()) {
+    miniPlayerSettingsWindow.close();
+  }
 });
 
 ipcMain.handle("get-mini-player-theme", () => {
@@ -938,6 +1126,13 @@ function createMenu() {
       ],
     },
     {
+      label: "Listen Along",
+      id: "listen-along-menu",
+      click: () => {
+        createListenAlongWindow();
+      },
+    },
+    {
       label: t("help"),
       submenu: [
         {
@@ -1050,8 +1245,8 @@ async function createWindow() {
     }
   };
 
-  mainWindow.on("move", saveMainWindowBounds);
-  mainWindow.on("resize", saveMainWindowBounds);
+  mainWindow.on("moved", saveMainWindowBounds);
+  mainWindow.on("resized", saveMainWindowBounds);
 
   // Enable F12 and Ctrl+Shift+i for DevTools - for Advanced Users
   mainWindow.webContents.on("before-input-event", (event, input) => {
@@ -1241,6 +1436,10 @@ async function createWindow() {
       interval: VideoAdSkipInterval,
     });
     initDiscordRpc(mainWindow);
+    initListenAlong(mainWindow, pushListenAlongState);
+    if (listenAlongAutoHost) {
+      require("./listen-along/listenAlong").setAutoHost(true, listenAlongHostName);
+    }
 
     // Inject JavaScript to auto-continue listening
     mainWindow.webContents.executeJavaScript(`
