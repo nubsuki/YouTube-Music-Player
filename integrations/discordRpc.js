@@ -3,8 +3,44 @@ const { getListenAlongState } = require("../listen-along/listenAlong");
 
 const clientId = process.env.YTMP_DISCORD_CLIENT_ID || "1332344236015878314";
 let client = null;
-let isConnected = false;
-let presenceUpdateInterval;
+let presenceUpdateInterval = null;
+let reconnectTimer = null;
+let connecting = false;
+
+function isClientAlive(c) {
+  return !!c && (typeof c.isConnected === "boolean" ? c.isConnected : true);
+}
+
+function scheduleReconnect(delay = 10000) {
+  if (reconnectTimer) return;
+  reconnectTimer = setTimeout(() => {
+    reconnectTimer = null;
+    connectToDiscord();
+  }, delay);
+}
+
+function teardownClient() {
+  if (presenceUpdateInterval) {
+    clearInterval(presenceUpdateInterval);
+    presenceUpdateInterval = null;
+  }
+  const old = client;
+  client = null;
+  if (old) {
+    try {
+      old.removeAllListeners();
+      old.on("error", () => {});
+      Promise.resolve(old.destroy()).catch(() => {});
+    } catch {}
+  }
+}
+
+function handleDiscordDisconnect() {
+  console.warn("Discord connection lost. Reconnecting in 10s...");
+  teardownClient();
+  scheduleReconnect();
+}
+
 let mainWindowRef = null;
 const appLaunchTimestamp = Math.floor(Date.now() / 1000);
 
@@ -18,7 +54,7 @@ function setDiscordActivity(
   currentTime = 0,
   duration = 0,
 ) {
-  if (!client || !isConnected) return;
+  if (!isClientAlive(client)) return;
 
   const Title =
     songTitle && songTitle.toString().trim().length > 0
@@ -32,6 +68,7 @@ function setDiscordActivity(
   if (!Url || Url.length > 512) {
     Url = "https://music.youtube.com";
   }
+  Url = Url.replace(/:\/\/(www\.)?youtube\.com\//, "://music.youtube.com/");
 
   const buttons = [];
 
@@ -66,7 +103,7 @@ function setDiscordActivity(
   if (isPlaying) {
     activity.startTimestamp =
       Math.floor(Date.now() / 1000) - Math.floor(currentTime);
-    if (duration > 0 && !isNaN(duration)) {
+    if (Number.isFinite(duration) && duration > 0) {
       activity.endTimestamp = activity.startTimestamp + Math.floor(duration);
     }
   } else {
@@ -79,15 +116,28 @@ function setDiscordActivity(
   if (isPlaying) {
     activity.details = truncate(Title, 128);
     activity.state = truncate(`by ${Artist}`, 128);
-    activity.largeImageKey = albumArtUrl || "icon";
+    const validArt =
+      typeof albumArtUrl === "string" &&
+      /^https:\/\//.test(albumArtUrl) &&
+      albumArtUrl.length <= 256;
+    activity.largeImageKey = validArt ? albumArtUrl : "icon";
   } else {
     activity.details = "YouTube Music by nubsuki";
     activity.largeImageKey = "icon";
   }
 
-  if (client.user) {
-    client.user.setActivity(activity).catch((error) => {
-      console.error("Error setting Discord activity:", error);
+  if (client && client.user) {
+    const active = client;
+    active.user.setActivity(activity).catch((error) => {
+      const msg = String((error && error.message) || error);
+      if (
+        /NOT_CONNECTED|Connection ended/i.test(msg) ||
+        (error && error.code === 4)
+      ) {
+        if (client === active) handleDiscordDisconnect();
+        return;
+      }
+      console.error("Error setting Discord activity:", msg);
     });
   }
 }
@@ -103,8 +153,15 @@ async function getCurrentSongInfo() {
       };
     }
 
-    const { songTitle, artist, albumArtUrl, isPlaying, currentTime, duration } =
-      await mainWindowRef.webContents.executeJavaScript(`
+    const {
+      songTitle,
+      artist,
+      albumArtUrl,
+      isPlaying,
+      currentTime,
+      duration,
+      songUrl,
+    } = await mainWindowRef.webContents.executeJavaScript(`
       (() => {
         const titleElement = document.querySelector('.title.ytmusic-player-bar');
         const bylineElement = document.querySelector('.byline.ytmusic-player-bar');
@@ -167,7 +224,7 @@ async function getCurrentSongInfo() {
           songUrl = window.location.href;
         }
 
-        return { songTitle, artist, qartist, albumArtUrl, isPlaying, currentTime, duration, songUrl };
+        return { songTitle, artist: qartist, qartist, albumArtUrl, isPlaying, currentTime, duration, songUrl };
       })();
     `);
     const SongTitle =
@@ -211,94 +268,63 @@ async function getCurrentSongInfo() {
 }
 
 async function connectToDiscord() {
-  try {
-    if (client) {
-      try {
-        await client.destroy();
-        console.log("Destroyed old Discord client session.");
-      } catch (error) {
-        console.warn(
-          "Error destroying old client (might already be destroyed):",
-          error.message,
-        );
+  if (connecting) return;
+  connecting = true;
+
+  teardownClient();
+  const thisClient = new rpc.Client({ clientId });
+  client = thisClient;
+
+  thisClient.on("ready", () => {
+    if (client !== thisClient) return;
+    console.log("Successfully connected to Discord!");
+
+    setDiscordActivity();
+
+    if (presenceUpdateInterval) clearInterval(presenceUpdateInterval);
+    presenceUpdateInterval = setInterval(async () => {
+      if (client !== thisClient) return;
+      // Watchdog: catches a dead pipe even if no "disconnected" event arrived
+      if (!isClientAlive(thisClient)) {
+        handleDiscordDisconnect();
+        return;
       }
-    }
-
-    client = new rpc.Client({ clientId });
-
-    client.on("ready", () => {
-      console.log("Successfully connected to Discord!");
-      isConnected = true;
-
-      setDiscordActivity();
-
-      presenceUpdateInterval = setInterval(async () => {
-        const {
-          songTitle,
-          artist,
-          songUrl,
-          albumArtUrl,
-          isPlaying,
-          currentTime,
-          duration,
-        } = await getCurrentSongInfo();
-        setDiscordActivity(
-          songTitle,
-          artist,
-          songUrl,
-          albumArtUrl,
-          isPlaying,
-          currentTime,
-          duration,
-        );
-      }, 12000);
-    });
-
-    client.on("error", (error) => {
-      console.error("Discord RPC Error:", error.message);
-      handleDiscordDisconnect();
-    });
-
-    client.on("disconnected", () => {
-      console.warn("Disconnected from Discord. Attempting to reconnect...");
-      handleDiscordDisconnect();
-    });
-
-    await client.login();
-  } catch (error) {
-    console.error("Failed to connect to Discord:", error.message);
-
-    if (!isConnected) {
-      setTimeout(connectToDiscord, 10000);
-    }
-  }
-}
-
-function handleDiscordDisconnect() {
-  isConnected = false;
-
-  if (presenceUpdateInterval) {
-    clearInterval(presenceUpdateInterval);
-    presenceUpdateInterval = null;
-  }
-
-  if (client) {
-    if (client.user) {
-      client.user
-        .clearActivity()
-        .catch((error) =>
-          console.error("Error clearing activity:", error.message),
-        );
-    }
-    client
-      .destroy()
-      .catch((error) =>
-        console.error("Error destroying client:", error.message),
+      const info = await getCurrentSongInfo();
+      if (client !== thisClient || !isClientAlive(thisClient)) return;
+      setDiscordActivity(
+        info.songTitle,
+        info.artist,
+        info.songUrl,
+        info.albumArtUrl,
+        info.isPlaying,
+        info.currentTime,
+        info.duration,
       );
-  }
+    }, 12000);
+  });
 
-  client = null;
-  setTimeout(connectToDiscord, 10000);
+  thisClient.on("error", (error) => {
+    if (client !== thisClient) return;
+    console.error("Discord RPC Error:", error && error.message);
+    handleDiscordDisconnect();
+  });
+
+  thisClient.on("disconnected", () => {
+    if (client !== thisClient) return;
+    handleDiscordDisconnect();
+  });
+
+  try {
+    await thisClient.login();
+  } catch (error) {
+    console.error("Failed to connect to Discord:", error && error.message);
+    if (client === thisClient) {
+      teardownClient();
+      scheduleReconnect();
+    }
+  } finally {
+    connecting = false;
+  }
 }
 
 function initDiscordRpc(mainWindow) {
