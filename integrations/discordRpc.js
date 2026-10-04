@@ -46,7 +46,7 @@ function setDiscordActivity(
   const laState = getListenAlongState();
   if (laState.isActive && laState.partyId && laState.serverUrl && isPlaying) {
     buttons.push({
-      label: "Listen Along 🎵",
+      label: "Listen Along",
       url: `${laState.serverUrl}/party/${laState.partyId}`,
     });
   } else {
@@ -73,7 +73,8 @@ function setDiscordActivity(
     activity.startTimestamp = appLaunchTimestamp;
   }
 
-  const truncate = (str, len) => str.length > len ? str.substring(0, len - 3) + "..." : str;
+  const truncate = (str, len) =>
+    str.length > len ? str.substring(0, len - 3) + "..." : str;
 
   if (isPlaying) {
     activity.details = truncate(Title, 128);
