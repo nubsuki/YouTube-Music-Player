@@ -8,6 +8,9 @@ const {
   dialog,
   screen,
 } = require("electron");
+
+app.commandLine.appendSwitch("autoplay-policy", "no-user-gesture-required");
+
 const { autoUpdater } = require("electron-updater");
 const path = require("path");
 const fs = require("fs").promises;

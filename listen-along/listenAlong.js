@@ -14,6 +14,7 @@ let lastNavigatedVideoId = null;
 let autoHostEnabled = false;
 let autoHostName = "";
 let isConnecting = false;
+let isNavigating = false;
 
 // Clock sync state
 let clockOffset = 0;
@@ -109,15 +110,43 @@ async function getSongState() {
         const imgEl    = document.querySelector('.image.style-scope.ytmusic-player-bar');
         const audio    = document.querySelector('audio');
         const video    = document.querySelector('video');
-        const media    = (audio && !audio.paused && audio.currentTime > 0) ? audio
-                       : (video && !video.paused && video.currentTime > 0) ? video : null;
+        const media    = (audio && audio.duration) ? audio : (video && video.duration) ? video : (audio || video);
+        const isPlaying = media ? (!media.paused && media.currentTime > 0 && !media.ended) : false;
+        const currentTime = media ? (media.currentTime || 0) : 0;
+        const duration = media ? (media.duration || 0) : 0;
+
+        // Extract true video URL even if host is browsing Home, Search, or Playlists
+        let songUrl = '';
+        const player = document.getElementById('movie_player');
+        if (player && typeof player.getVideoUrl === 'function') {
+          const vUrl = player.getVideoUrl();
+          if (vUrl && vUrl.includes('v=')) songUrl = vUrl;
+        }
+        if (!songUrl && player && typeof player.getVideoData === 'function') {
+          const vData = player.getVideoData();
+          if (vData && vData.video_id) {
+            songUrl = 'https://music.youtube.com/watch?v=' + vData.video_id;
+          }
+        }
+        if (!songUrl) {
+          const link = (titleEl && titleEl.querySelector('a')) ||
+                       (imgEl && imgEl.closest('a')) ||
+                       document.querySelector('ytmusic-player-bar a[href*="watch?v="]');
+          if (link && link.href && link.href.includes('v=')) {
+            songUrl = link.href;
+          }
+        }
+        if (!songUrl) {
+          songUrl = window.location.href;
+        }
+
         return {
           song:        titleEl  ? titleEl.textContent.trim()               : '',
           artist:      bylineEl ? bylineEl.textContent.trim().split('•')[0].trim() : '',
-          url:         window.location.href,
-          isPlaying:   !!media,
-          currentTime: media ? media.currentTime  : 0,
-          duration:    media ? (media.duration || 0) : 0,
+          url:         songUrl,
+          isPlaying,
+          currentTime,
+          duration,
           thumbnail:   imgEl  ? imgEl.src          : '',
         };
       })()
@@ -198,9 +227,15 @@ function extractVideoId(url) {
 // Core sync
 async function syncPlayback(state) {
   if (!mainWindowRef || mainWindowRef.isDestroyed() || !state) return;
+  if (isNavigating) return; // Prevent script injection during navigation
 
   const safeUrl = isSafeYtMusicUrl(state.url) ? state.url : null;
-  const hostVideoId = safeUrl ? extractVideoId(safeUrl) : null;
+  let hostVideoId = safeUrl ? extractVideoId(safeUrl) : null;
+  // Reject anything that isn't a real YouTube video ID (prevents script injection)
+  if (hostVideoId && !/^[A-Za-z0-9_-]{11}$/.test(hostVideoId)) {
+    console.warn("[ListenAlong] Ignoring invalid video ID from host");
+    hostVideoId = null;
+  }
 
   try {
     const currentUrl = mainWindowRef.webContents.getURL();
@@ -212,10 +247,56 @@ async function syncPlayback(state) {
       hostVideoId !== guestVideoId &&
       hostVideoId !== lastNavigatedVideoId
     ) {
-      lastNavigatedVideoId = hostVideoId;
-      console.log(`[ListenAlong] Guest syncing track: ${safeUrl}`);
-      await mainWindowRef.loadURL(safeUrl);
+      const targetUrl = `https://music.youtube.com/watch?v=${hostVideoId}`;
+      const idLiteral = JSON.stringify(hostVideoId);
+      const urlLiteral = JSON.stringify(targetUrl);
+
+      console.log(`[ListenAlong] Guest syncing track: ${targetUrl}`);
+
+      isNavigating = true;
+      try {
+        await mainWindowRef.webContents.executeJavaScript(`
+          (() => {
+            const player = document.getElementById('movie_player');
+            if (player && typeof player.loadVideoById === 'function') {
+              player.loadVideoById(${idLiteral});
+              try { window.history.replaceState(null, '', '/watch?v=' + ${idLiteral}); } catch (e) {}
+            } else {
+              window.location.href = ${urlLiteral};
+            }
+          })()
+        `);
+        lastNavigatedVideoId = hostVideoId; // only remember it once it worked
+      } catch (err) {
+        console.error(
+          "[ListenAlong] Fast navigation failed, falling back:",
+          err,
+        );
+        try {
+          await mainWindowRef.webContents.executeJavaScript(
+            `window.location.href = ${JSON.stringify(targetUrl)};`,
+          );
+          lastNavigatedVideoId = hostVideoId;
+        } catch {
+          try {
+            await mainWindowRef.loadURL(targetUrl);
+            lastNavigatedVideoId = hostVideoId;
+          } catch {
+            lastNavigatedVideoId = null; // allow a retry on the next sync
+          }
+        }
+      } finally {
+        setTimeout(() => {
+          isNavigating = false;
+        }, 2000);
+      }
       return;
+    }
+
+    if (!hostVideoId && safeUrl) {
+      console.warn(
+        `[ListenAlong] Host URL does not contain a video ID (${safeUrl}). Host must open the song player / watch view or update their app.`,
+      );
     }
 
     // Calculate actual host position accounting for transit time

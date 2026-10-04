@@ -143,7 +143,31 @@ async function getCurrentSongInfo() {
           duration = videoElement.duration;
         }
 
-        return { songTitle, artist, qartist, albumArtUrl, isPlaying, currentTime, duration };
+        let songUrl = '';
+        const player = document.getElementById('movie_player');
+        if (player && typeof player.getVideoUrl === 'function') {
+          const vUrl = player.getVideoUrl();
+          if (vUrl && vUrl.includes('v=')) songUrl = vUrl;
+        }
+        if (!songUrl && player && typeof player.getVideoData === 'function') {
+          const vData = player.getVideoData();
+          if (vData && vData.video_id) {
+            songUrl = 'https://music.youtube.com/watch?v=' + vData.video_id;
+          }
+        }
+        if (!songUrl) {
+          const link = (titleElement && titleElement.querySelector('a')) ||
+                       (imgElement && imgElement.closest('a')) ||
+                       document.querySelector('ytmusic-player-bar a[href*="watch?v="]');
+          if (link && link.href && link.href.includes('v=')) {
+            songUrl = link.href;
+          }
+        }
+        if (!songUrl) {
+          songUrl = window.location.href;
+        }
+
+        return { songTitle, artist, qartist, albumArtUrl, isPlaying, currentTime, duration, songUrl };
       })();
     `);
     const SongTitle =
@@ -155,18 +179,18 @@ async function getCurrentSongInfo() {
         ? artist.toString().trim()
         : "Loading Artist";
 
-    let songUrl = mainWindowRef.webContents.getURL();
-    if (typeof songUrl !== "string" || songUrl.length === 0) {
-      songUrl = "https://music.youtube.com";
+    let finalSongUrl = songUrl || mainWindowRef.webContents.getURL();
+    if (typeof finalSongUrl !== "string" || finalSongUrl.length === 0) {
+      finalSongUrl = "https://music.youtube.com";
     }
-    if (songUrl.length > 512) {
-      songUrl = "https://music.youtube.com";
+    if (finalSongUrl.length > 512) {
+      finalSongUrl = "https://music.youtube.com";
     }
 
     return {
       songTitle: SongTitle,
       artist: Artist,
-      songUrl,
+      songUrl: finalSongUrl,
       albumArtUrl,
       isPlaying,
       currentTime,

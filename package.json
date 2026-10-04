@@ -1,6 +1,6 @@
 {
   "name": "youtube-music-player",
-  "version": "3.0.0",
+  "version": "3.0.1",
   "description": "YouTube Music Player",
   "main": "main.js",
   "repository": {
