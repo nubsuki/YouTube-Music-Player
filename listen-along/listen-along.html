@@ -525,7 +525,7 @@
 
       list.innerHTML = members.map(m => `
         <div class="member-chip">
-          <div class="member-av">${(m.name || '?').slice(0, 2).toUpperCase()}</div>
+          <img class="member-av" crossorigin="anonymous" src="https://api.dicebear.com/10.x/constellation/svg?backgroundColor=1c1c1f&constellationColor=f0f0f2&seed=${encodeURIComponent(m.name || '?')}" alt="avatar" />
           ${escHtml(m.name)}
         </div>`).join('');
     }
@@ -609,6 +609,12 @@
 
     async function leaveOrCloseParty() {
       if (currentState && currentState.isHost) {
+        // Turn off auto-host so it doesn't instantly restart
+        const autoHostCb = document.getElementById('auto-host-cb');
+        if (autoHostCb && autoHostCb.checked) {
+          autoHostCb.checked = false;
+          api.saveConfig({ autoHost: false });
+        }
         await api.closeParty();
       } else {
         await api.leaveParty();
