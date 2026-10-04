@@ -10,7 +10,6 @@ let lastSongState = null;
 let broadcastInterval = null;
 let mainWindowRef = null;
 let onStateChangeCb = null;
-let lastNavigatedVideoId = null;
 let autoHostEnabled = false;
 let autoHostName = "";
 let isConnecting = false;
@@ -25,10 +24,8 @@ let clockSyncDone = false;
 
 // Sync tuning
 const SYNC_BROADCAST_INTERVAL = 2000;
-const SYNC_SCHEDULE_BUFFER = 300;
 const DRIFT_HARD_THRESHOLD = 2.0;
 const DRIFT_SOFT_THRESHOLD = 0.5;
-const DRIFT_IGNORE_THRESHOLD = 0.1;
 
 // Public state
 function getListenAlongState() {
@@ -185,6 +182,18 @@ function startBroadcast() {
   }, SYNC_BROADCAST_INTERVAL);
 }
 
+// Serialize a value as a JS literal
+function toJsLiteral(value) {
+  const map = {
+    "<": "\\u003C",
+    ">": "\\u003E",
+    "/": "\\u002F",
+    "\u2028": "\\u2028",
+    "\u2029": "\\u2029",
+  };
+  return JSON.stringify(value).replace(/[<>\/\u2028\u2029]/g, (c) => map[c]);
+}
+
 // Validate a URL is on YouTube Music
 function isSafeYtMusicUrl(url) {
   if (!url || typeof url !== "string") return false;
@@ -193,22 +202,6 @@ function isSafeYtMusicUrl(url) {
     return (
       parsed.protocol === "https:" &&
       /^(music\.youtube\.com|www\.youtube\.com)$/.test(parsed.hostname)
-    );
-  } catch {
-    return false;
-  }
-}
-
-// Validate thumbnail is from a trusted YouTube CDN
-function isSafeThumbnail(url) {
-  if (!url || typeof url !== "string") return false;
-  try {
-    const parsed = new URL(url);
-    return (
-      parsed.protocol === "https:" &&
-      /^(lh3\.googleusercontent\.com|i\.ytimg\.com|yt3\.ggpht\.com)$/.test(
-        parsed.hostname,
-      )
     );
   } catch {
     return false;
@@ -321,8 +314,8 @@ async function fireInPageNav(id, method) {
     .executeJavaScript(
       `
       (() => {
-        const id = ${JSON.stringify(id)};
-        const method = ${JSON.stringify(method)};
+        const id = ${toJsLiteral(id)};
+        const method = ${toJsLiteral(method)};
         const app = document.querySelector('ytmusic-app');
         if (!app) return { fired: false };
         // Full endpoint, the way YT Music's own links carry it
@@ -365,6 +358,8 @@ async function fireInPageNav(id, method) {
 
 // Core sync
 async function syncPlayback(state) {
+  // Only guests sync
+  if (!currentParty || currentParty.role !== "guest") return;
   if (!mainWindowRef || mainWindowRef.isDestroyed() || !state) return;
   if (isNavigating) return; // Prevent script injection during navigation
   setGuestLock(true);
@@ -383,6 +378,9 @@ async function syncPlayback(state) {
     const playerId = await getGuestPlayerVideoId();
     if (playerId) guestVideoId = playerId;
 
+    // Already on the host's track: clear the retry counter
+    if (hostVideoId && hostVideoId === guestVideoId) navAttempts = 0;
+
     // Track changed: navigate so the YT Music UI updates too
     if (hostVideoId && hostVideoId !== guestVideoId) {
       if (hostVideoId !== navTargetId) {
@@ -399,7 +397,7 @@ async function syncPlayback(state) {
           );
           try {
             await mainWindowRef.webContents.executeJavaScript(
-              `(() => { const p = document.getElementById('movie_player'); if (p && p.loadVideoById) p.loadVideoById(${JSON.stringify(hostVideoId)}); })()`,
+              `(() => { const p = document.getElementById('movie_player'); if (p && p.loadVideoById) p.loadVideoById(${toJsLiteral(hostVideoId)}); })()`,
             );
           } catch {}
         }
@@ -421,10 +419,7 @@ async function syncPlayback(state) {
         for (const m of usableNavMethods()) {
           if (ok) break;
           const { fired } = await fireInPageNav(hostVideoId, m);
-          if (!fired) {
-            navStats[m].fails++;
-            continue;
-          }
+          if (!fired) continue;
           ok = await waitForTrack(hostVideoId, 1800);
           console.log(`[ListenAlong] In-app nav '${m}' verified=${ok}`);
           if (ok) {
@@ -440,7 +435,7 @@ async function syncPlayback(state) {
           console.log("[ListenAlong] Falling back to page load");
           try {
             await mainWindowRef.webContents.executeJavaScript(
-              `window.location.assign(${JSON.stringify(targetUrl)})`,
+              `window.location.assign(${toJsLiteral(targetUrl)})`,
             );
           } catch {
             try {
@@ -450,8 +445,6 @@ async function syncPlayback(state) {
             }
           }
         }
-
-        lastNavigatedVideoId = hostVideoId;
       } catch (err) {
         console.error("[ListenAlong] Navigation failed:", err);
       } finally {
@@ -537,11 +530,17 @@ async function syncPlayback(state) {
 async function createParty(serverUrl, hostName) {
   if (currentParty) await resetParty();
 
-  const cleanUrl = (serverUrl || DEFAULT_SERVER_URL).replace(/\/$/, "");
+  const cleanUrl = DEFAULT_SERVER_URL.replace(/\/$/, "");
+  // strip control chars and cap length
+  const safeHostName =
+    String(hostName || "")
+      .replace(/[\u0000-\u001F\u007F]/g, "")
+      .trim()
+      .slice(0, 24) || "Host";
   const res = await fetch(`${cleanUrl}/api/party/create`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ hostName: hostName || "Host" }),
+    body: JSON.stringify({ hostName: safeHostName }),
   });
 
   if (!res.ok) {
@@ -554,7 +553,7 @@ async function createParty(serverUrl, hostName) {
     role: "host",
     id: partyId,
     hostToken,
-    hostName: hostName || "Host",
+    hostName: safeHostName,
     serverUrl: cleanUrl,
   };
   currentMembers = [];
@@ -637,7 +636,6 @@ async function closeParty() {
   currentParty = null;
   currentMembers = [];
   lastSongState = null;
-  lastNavigatedVideoId = null;
   navTargetId = null;
   navAttempts = 0;
   clockOffset = 0;
@@ -651,7 +649,7 @@ async function closeParty() {
 async function joinParty(serverUrl, partyId, guestName) {
   if (currentParty) await resetParty();
 
-  const cleanUrl = (serverUrl || DEFAULT_SERVER_URL).replace(/\/$/, "");
+  const cleanUrl = DEFAULT_SERVER_URL.replace(/\/$/, "");
   const cleanPartyId = (partyId || "").trim().toUpperCase();
   const cleanName = (guestName || "Listener").trim().slice(0, 24) || "Listener";
 
@@ -767,7 +765,6 @@ async function leaveParty() {
   currentParty = null;
   currentMembers = [];
   lastSongState = null;
-  lastNavigatedVideoId = null;
   navTargetId = null;
   navAttempts = 0;
   clockOffset = 0;
