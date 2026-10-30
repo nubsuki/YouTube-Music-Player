@@ -16,7 +16,7 @@ body {
     overflow: hidden;
     height: 100vh;
     transition: background-color 0.3s ease;
-    -webkit-app-region: drag;
+    -webkit-app-region: no-drag;
 }
 
 
@@ -41,6 +41,7 @@ body.blur {
     box-sizing: border-box;
     justify-content: space-between;
     position: relative;
+    -webkit-app-region: no-drag;
 }
 
 body.blur #mini-player-container::before {
@@ -54,6 +55,7 @@ body.blur #mini-player-container::before {
     transform: scale(1.15);
     opacity: 0.28;
     z-index: 0;
+    pointer-events: none;
 }
 
 body.blur #mini-player-container::after {
@@ -62,6 +64,7 @@ body.blur #mini-player-container::after {
     inset: 0;
     background: var(--bg-color);
     z-index: 0;
+    pointer-events: none;
 }
 
 body.blur #mini-player-container > * {
@@ -128,6 +131,7 @@ body.blur #mini-player-container > * {
     gap: 8px;
     flex: 1;
     min-width: 0;
+    -webkit-app-region: drag;
 }
 
 #thumbnail {
@@ -229,6 +233,11 @@ body.blur #mini-player-container > * {
 .control-btn svg {
     width: 20px;
     height: 20px;
+    pointer-events: none;
+}
+
+.control-btn svg * {
+    pointer-events: none;
 }
 
 #play-pause-btn svg {
