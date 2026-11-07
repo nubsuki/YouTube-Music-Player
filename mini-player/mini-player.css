@@ -199,7 +199,23 @@ body.blur #mini-player-container > * {
 
 #top-controls {
     display: flex;
-    gap: 4px;
+    align-items: center;
+    gap: 2px;
+    flex-shrink: 0;
+}
+
+#top-controls .top-btn {
+    opacity: 0.65;
+    padding: 2px;
+}
+
+#top-controls .top-btn:hover {
+    opacity: 1;
+}
+
+#top-controls .top-btn svg {
+    width: 15px;
+    height: 15px;
 }
 
 /* Base style for all buttons */
@@ -245,10 +261,24 @@ body.blur #mini-player-container > * {
     height: 24px;
 }
 
-/* Settings button removed; keep maximize icon sizing */
-#maximize-btn svg {
-    width: 16px;
-    height: 16px;
+/* Drag handle */
+#drag-btn {
+    -webkit-app-region: no-drag;
+    cursor: grab;
+}
+
+#drag-btn:active,
+body.is-dragging #drag-btn {
+    cursor: grabbing;
+    opacity: 1;
+}
+
+body.is-dragging {
+    cursor: grabbing;
+}
+
+body.is-dragging #drag-btn {
+    fill: var(--accent-color);
 }
 
 /* Spinner style */

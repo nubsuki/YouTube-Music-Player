@@ -11,4 +11,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   openSettings: () => ipcRenderer.send('open-mini-player-settings'),
   onThemeChanged: (callback) => ipcRenderer.on('theme-changed', (event, theme) => callback(theme)),
   closeWindow: () => ipcRenderer.send('close-mini-player-settings'),
+  startDrag: () => ipcRenderer.send('mini-player-drag-start'),
+  moveDrag: () => ipcRenderer.send('mini-player-drag-move'),
+  endDrag: () => ipcRenderer.send('mini-player-drag-end'),
 });
