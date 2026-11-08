@@ -469,6 +469,7 @@ function createMiniPlayerWindow() {
     parent: mainWindow.isVisible() ? mainWindow : null,
     frame: false,
     resizable: false,
+    movable: true,
     alwaysOnTop: miniPlayerAlwaysOnTop,
     show: false,
     minimizable: false,
@@ -751,6 +752,30 @@ function createMiniPlayerSettingsWindow() {
     }
   });
 }
+
+ipcMain.on("mini-player-drag-start", (event) => {
+  const win = BrowserWindow.fromWebContents(event.sender);
+  if (!win || win.isDestroyed()) return;
+  const cursor = screen.getCursorScreenPoint();
+  const [winX, winY] = win.getPosition();
+  win._dragOffset = { x: cursor.x - winX, y: cursor.y - winY };
+});
+
+ipcMain.on("mini-player-drag-move", (event) => {
+  const win = BrowserWindow.fromWebContents(event.sender);
+  if (!win || win.isDestroyed() || !win._dragOffset) return;
+  const cursor = screen.getCursorScreenPoint();
+  win.setPosition(
+    Math.round(cursor.x - win._dragOffset.x),
+    Math.round(cursor.y - win._dragOffset.y),
+  );
+});
+
+ipcMain.on("mini-player-drag-end", (event) => {
+  const win = BrowserWindow.fromWebContents(event.sender);
+  if (!win || win.isDestroyed()) return;
+  win._dragOffset = null;
+});
 
 ipcMain.on("open-mini-player-settings", () => {
   createMiniPlayerSettingsWindow();

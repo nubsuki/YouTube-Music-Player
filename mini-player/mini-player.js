@@ -7,6 +7,7 @@ const nextBtn = document.getElementById('next-btn');
 const likeBtn = document.getElementById('like-btn');
 const dislikeBtn = document.getElementById('dislike-btn');
 const maximizeBtn = document.getElementById('maximize-btn');
+const dragBtn = document.getElementById('drag-btn');
 
 const playIcon = document.getElementById('play-icon');
 const pauseIcon = document.getElementById('pause-icon');
@@ -23,7 +24,7 @@ let isUserSeeking = false;
 async function applyTranslations() {
     try {
         const translations = await window.electronAPI.getTranslations([
-            'previous', 'play_pause', 'next', 'like', 'dislike', 'expand'
+            'previous', 'play_pause', 'next', 'like', 'dislike', 'expand', 'move'
         ]);
 
         prevBtn.title = translations['previous'];
@@ -32,6 +33,10 @@ async function applyTranslations() {
         likeBtn.title = translations['like'];
         dislikeBtn.title = translations['dislike'];
         maximizeBtn.title = translations['expand'];
+        if (dragBtn) {
+            dragBtn.title = translations['move'];
+            dragBtn.setAttribute('aria-label', translations['move']);
+        }
     } catch (error) {
         console.error('Error applying translations:', error);
     }
@@ -64,6 +69,38 @@ nextBtn.addEventListener('click', () => sendAction('next'));
 likeBtn.addEventListener('click', () => sendAction('like'));
 dislikeBtn.addEventListener('click', () => sendAction('dislike'));
 maximizeBtn.addEventListener('click', () => sendAction('maximize'));
+
+// Hold the move button and drag to reposition the window
+if (dragBtn) {
+    let isDragging = false;
+
+    const stopDrag = () => {
+        if (!isDragging) return;
+        isDragging = false;
+        document.body.classList.remove('is-dragging');
+        window.electronAPI.endDrag();
+        window.removeEventListener('pointermove', onDragMove);
+        window.removeEventListener('pointerup', stopDrag);
+        window.removeEventListener('pointercancel', stopDrag);
+    };
+
+    const onDragMove = () => {
+        if (!isDragging) return;
+        window.electronAPI.moveDrag();
+    };
+
+    dragBtn.addEventListener('pointerdown', (e) => {
+        if (e.button !== 0) return;
+        e.preventDefault();
+        isDragging = true;
+        document.body.classList.add('is-dragging');
+        dragBtn.setPointerCapture(e.pointerId);
+        window.electronAPI.startDrag();
+        window.addEventListener('pointermove', onDragMove);
+        window.addEventListener('pointerup', stopDrag);
+        window.addEventListener('pointercancel', stopDrag);
+    });
+}
 
 // Helper to update progress bar background
 const updateBarBackground = (value, max) => {

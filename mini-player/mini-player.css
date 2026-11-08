@@ -16,7 +16,7 @@ body {
     overflow: hidden;
     height: 100vh;
     transition: background-color 0.3s ease;
-    -webkit-app-region: drag;
+    -webkit-app-region: no-drag;
 }
 
 
@@ -41,6 +41,7 @@ body.blur {
     box-sizing: border-box;
     justify-content: space-between;
     position: relative;
+    -webkit-app-region: no-drag;
 }
 
 body.blur #mini-player-container::before {
@@ -54,6 +55,7 @@ body.blur #mini-player-container::before {
     transform: scale(1.15);
     opacity: 0.28;
     z-index: 0;
+    pointer-events: none;
 }
 
 body.blur #mini-player-container::after {
@@ -62,6 +64,7 @@ body.blur #mini-player-container::after {
     inset: 0;
     background: var(--bg-color);
     z-index: 0;
+    pointer-events: none;
 }
 
 body.blur #mini-player-container > * {
@@ -128,6 +131,7 @@ body.blur #mini-player-container > * {
     gap: 8px;
     flex: 1;
     min-width: 0;
+    -webkit-app-region: drag;
 }
 
 #thumbnail {
@@ -195,7 +199,23 @@ body.blur #mini-player-container > * {
 
 #top-controls {
     display: flex;
-    gap: 4px;
+    align-items: center;
+    gap: 2px;
+    flex-shrink: 0;
+}
+
+#top-controls .top-btn {
+    opacity: 0.65;
+    padding: 2px;
+}
+
+#top-controls .top-btn:hover {
+    opacity: 1;
+}
+
+#top-controls .top-btn svg {
+    width: 15px;
+    height: 15px;
 }
 
 /* Base style for all buttons */
@@ -229,6 +249,11 @@ body.blur #mini-player-container > * {
 .control-btn svg {
     width: 20px;
     height: 20px;
+    pointer-events: none;
+}
+
+.control-btn svg * {
+    pointer-events: none;
 }
 
 #play-pause-btn svg {
@@ -236,10 +261,24 @@ body.blur #mini-player-container > * {
     height: 24px;
 }
 
-/* Settings button removed; keep maximize icon sizing */
-#maximize-btn svg {
-    width: 16px;
-    height: 16px;
+/* Drag handle */
+#drag-btn {
+    -webkit-app-region: no-drag;
+    cursor: grab;
+}
+
+#drag-btn:active,
+body.is-dragging #drag-btn {
+    cursor: grabbing;
+    opacity: 1;
+}
+
+body.is-dragging {
+    cursor: grabbing;
+}
+
+body.is-dragging #drag-btn {
+    fill: var(--accent-color);
 }
 
 /* Spinner style */
