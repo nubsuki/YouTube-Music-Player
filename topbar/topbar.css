@@ -43,6 +43,8 @@ body {
   width: 18px;
   height: 18px;
   flex-shrink: 0;
+  object-fit: contain;
+  pointer-events: none;
 }
 
 .app-title {

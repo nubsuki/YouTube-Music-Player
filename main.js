@@ -1117,6 +1117,15 @@ async function createWindow() {
   mainWindow.webContents.on("before-input-event", handleCommonShortcuts);
   ytView.webContents.on("before-input-event", handleCommonShortcuts);
 
+  ytView.webContents.on("page-title-updated", (_e, title) => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.setTitle(title || "YouTube Music");
+    }
+  });
+  mainWindow.on("page-title-updated", (e) => {
+    e.preventDefault();
+  });
+
   // Load filters in background
   initFiltersExternal().then((success) => {
     adblockActive = !!success;
