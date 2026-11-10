@@ -163,9 +163,10 @@ async function loadConfig() {
     listenAlongServerUrl = config.listenAlongServerUrl || DEFAULT_SERVER_URL;
     listenAlongHostName = config.listenAlongHostName || "";
     listenAlongAutoHost = !!config.listenAlongAutoHost;
+    require("./listen-along/listenAlong").setAutoHost(listenAlongAutoHost, listenAlongHostName);
 
     console.log(
-      `Config loaded - Minimize to tray: ${minimizeToTray}, Video ad skipper: ${videoAdSkipperEnabled}, Video ad skip speed: ${VideoAdSkipSpeed}, Last URL: ${lastUrl}, Open last song: ${openLastSong}, Resume playback: ${resumePlayback}, Mini-player bounds: ${JSON.stringify(miniPlayerBounds)}, Main window bounds: ${JSON.stringify(mainWindowBounds)}, Mini-player theme: ${miniPlayerTheme}`,
+      `Config loaded - Minimize to tray: ${minimizeToTray}, Video ad skipper: ${videoAdSkipperEnabled}, Video ad skip speed: ${VideoAdSkipSpeed}, Last URL: ${lastUrl}, Open last song: ${openLastSong}, Resume playback: ${resumePlayback}, Mini-player bounds: ${JSON.stringify(miniPlayerBounds)}, Main window bounds: ${JSON.stringify(mainWindowBounds)}, Mini-player theme: ${miniPlayerTheme}, Listen along auto-host: ${listenAlongAutoHost}`,
     );
     return config;
   } catch (error) {
@@ -1318,7 +1319,9 @@ async function createWindow() {
       };
       initDiscordRpc(playerHost);
       initListenAlong(playerHost, pushListenAlongState);
+      require("./listen-along/listenAlong").setAutoHost(listenAlongAutoHost, listenAlongHostName);
       if (listenAlongAutoHost && listenAlongHostName && listenAlongHostName.trim().length >= 3) {
+        console.log(`[ListenAlong] Triggering auto-host on startup for "${listenAlongHostName}"...`);
         require("./listen-along/listenAlong").triggerAutoHostOnStartup(listenAlongHostName);
       }
     }

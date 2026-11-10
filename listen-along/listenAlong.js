@@ -804,8 +804,15 @@ function setAutoHost(enabled, hostName) {
 
 function triggerAutoHostOnStartup(hostName) {
   const nameToUse = (hostName || autoHostName || "").trim();
-  if (nameToUse.length >= 3 && autoHostEnabled && !currentParty && !isConnecting) {
-    createParty(DEFAULT_SERVER_URL, nameToUse).catch(console.error);
+  if (hostName !== undefined && hostName.trim().length >= 3) {
+    autoHostEnabled = true;
+    autoHostName = hostName.trim();
+  }
+  if (nameToUse.length >= 3 && !currentParty && !isConnecting) {
+    console.log(`[ListenAlong] Auto-hosting party for "${nameToUse}" on startup...`);
+    return createParty(DEFAULT_SERVER_URL, nameToUse).catch((err) => {
+      console.error("[ListenAlong] Auto-host createParty failed:", err.message || err);
+    });
   }
 }
 
