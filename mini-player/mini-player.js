@@ -157,8 +157,8 @@ window.electronAPI.onStateUpdate((state) => {
     dislikeBtn.classList.toggle('disabled', !state.isDisliked);
 
     // Update song info
-    const safeTitle = state.title || 'No song playing';
-    titleEl.textContent = safeTitle;
+    const songTitle = state.title || 'No song playing';
+    titleEl.textContent = songTitle;
     artistEl.textContent = state.artist || '';
     timeInfoEl.textContent = state.timeInfo || '--:-- / --:--';
 
@@ -167,7 +167,7 @@ window.electronAPI.onStateUpdate((state) => {
         thumbnailEl.classList.toggle('hidden', !src);
         if (src) {
             if (thumbnailEl.src !== src) thumbnailEl.src = src;
-            thumbnailEl.alt = safeTitle;
+            thumbnailEl.alt = songTitle;
         } else {
             thumbnailEl.removeAttribute('src');
             thumbnailEl.alt = '';
