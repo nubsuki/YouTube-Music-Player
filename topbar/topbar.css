@@ -104,14 +104,18 @@ body {
 }
 
 @keyframes spin {
-  from { transform: rotate(0deg); }
-  to { transform: rotate(360deg); }
+  from {
+    transform: rotate(0deg);
+  }
+
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .topbar-drag-region {
   flex: 1;
   height: 100%;
   -webkit-app-region: drag;
-  /* Leaves ~140px on the right for Windows 11 titleBarOverlay buttons */
   margin-right: 140px;
 }
