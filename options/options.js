@@ -33,12 +33,12 @@ function showStatus(el, msg, ok = true) {
 
 // App settings tab
 const startWithSystem = document.getElementById('start-with-system');
-const openLastSongEl  = document.getElementById('open-last-song');
-const resumePlayEl    = document.getElementById('resume-playback');
-const minToTrayEl     = document.getElementById('minimize-to-tray');
-const mpOnMinimizeEl  = document.getElementById('miniplayer-on-minimize');
-const resumeRow       = document.getElementById('resume-row');
-const mpMinimizeRow   = document.getElementById('miniplayer-on-minimize-row');
+const openLastSongEl = document.getElementById('open-last-song');
+const resumePlayEl = document.getElementById('resume-playback');
+const minToTrayEl = document.getElementById('minimize-to-tray');
+const mpOnMinimizeEl = document.getElementById('miniplayer-on-minimize');
+const resumeRow = document.getElementById('resume-row');
+const mpMinimizeRow = document.getElementById('miniplayer-on-minimize-row');
 
 function syncSubToggles() {
   resumeRow.classList.toggle('enabled', openLastSongEl.checked);
@@ -48,10 +48,10 @@ function syncSubToggles() {
 async function autoSaveAppSettings() {
   syncSubToggles();
   await api.saveAppSettings({
-    startWithSystem:          startWithSystem.checked,
-    openLastSong:             openLastSongEl.checked,
-    resumePlayback:           resumePlayEl.checked,
-    minimizeToTray:           minToTrayEl.checked,
+    startWithSystem: startWithSystem.checked,
+    openLastSong: openLastSongEl.checked,
+    resumePlayback: resumePlayEl.checked,
+    minimizeToTray: minToTrayEl.checked,
     openMiniPlayerOnMinimize: mpOnMinimizeEl.checked,
   });
 }
@@ -63,27 +63,32 @@ async function autoSaveAppSettings() {
 async function loadAppSettings() {
   const s = await api.getAppSettings();
   startWithSystem.checked = s.startWithSystem;
-  openLastSongEl.checked  = s.openLastSong;
-  resumePlayEl.checked    = s.resumePlayback;
-  minToTrayEl.checked     = s.minimizeToTray;
-  mpOnMinimizeEl.checked  = s.openMiniPlayerOnMinimize;
+  openLastSongEl.checked = s.openLastSong;
+  resumePlayEl.checked = s.resumePlayback;
+  minToTrayEl.checked = s.minimizeToTray;
+  mpOnMinimizeEl.checked = s.openMiniPlayerOnMinimize;
   syncSubToggles();
 }
 
 // Ad & filters tab
 let allFilters = [];
 
+let filterSaveTimer = null;
 function autoSaveFilters() {
-  const toSave = allFilters.map(f => ({ name: f.name, url: f.url, description: f.description, enabled: f.enabled }));
-  api.saveFilters(toSave);
-  api.saveAdSkipperSettings({
-    enabled: document.getElementById('ad-skipper-enabled').checked,
-    speed: parseInt(document.getElementById('ad-skip-speed').value),
-  });
+  if (filterSaveTimer) clearTimeout(filterSaveTimer);
+  filterSaveTimer = setTimeout(() => {
+    const toSave = allFilters.map(f => ({ name: f.name, url: f.url, description: f.description, enabled: f.enabled, isDefault: !!f.isDefault }));
+    api.saveFilters(toSave);
+    api.saveAdSkipperSettings({
+      enabled: document.getElementById('ad-skipper-enabled').checked,
+      speed: parseInt(document.getElementById('ad-skip-speed').value),
+    });
+    setTimeout(updateAdblockStatus, 200);
+  }, 200);
 }
 
-const adblockStateEl   = document.getElementById('adblock-state');
-const adblockListsEl   = document.getElementById('adblock-enabled-lists');
+const adblockStateEl = document.getElementById('adblock-state');
+const adblockListsEl = document.getElementById('adblock-enabled-lists');
 const adblockCheckedEl = document.getElementById('adblock-checked');
 const adblockBlockedEl = document.getElementById('adblock-blocked');
 
@@ -95,10 +100,10 @@ async function updateAdblockStatus() {
     adblockStateEl.className = 'status-value state-indicator ' + (isActive ? 'active' : 'inactive');
     adblockStateEl.textContent = isActive ? 'Active' : 'Inactive';
 
-    adblockListsEl.textContent   = (stats.enabledLists ?? 0).toLocaleString();
+    adblockListsEl.textContent = (stats.enabledLists ?? 0).toLocaleString();
     adblockCheckedEl.textContent = (stats.checked ?? 0).toLocaleString();
     adblockBlockedEl.textContent = (stats.blocked ?? 0).toLocaleString();
-  } catch {}
+  } catch { }
 }
 
 function renderFilters() {
@@ -149,10 +154,11 @@ async function loadFilters() {
   const s = await api.getAdSkipperSettings();
   document.getElementById('ad-skipper-enabled').checked = s.enabled;
   document.getElementById('ad-skip-speed').value = s.speed;
-
-  document.getElementById('ad-skipper-enabled').addEventListener('change', autoSaveFilters);
-  document.getElementById('ad-skip-speed').addEventListener('change', autoSaveFilters);
 }
+
+// Registered once to avoid stacking duplicate listeners
+document.getElementById('ad-skipper-enabled').addEventListener('change', autoSaveFilters);
+document.getElementById('ad-skip-speed').addEventListener('change', autoSaveFilters);
 
 document.getElementById('reset-filters-btn').addEventListener('click', () => {
   api.resetFilters();
@@ -165,17 +171,21 @@ document.getElementById('more-filters').addEventListener('click', e => {
 });
 
 // Add filter modal
-const addModal     = document.getElementById('add-filter-modal');
-const addNameEl    = document.getElementById('add-filter-name');
-const addUrlEl     = document.getElementById('add-filter-url');
-const addErrorEl   = document.getElementById('add-filter-error');
+const addModal = document.getElementById('add-filter-modal');
+const addNameEl = document.getElementById('add-filter-name');
+const addUrlEl = document.getElementById('add-filter-url');
+const addErrorEl = document.getElementById('add-filter-error');
 
 function showAddModal() { addNameEl.value = ''; addUrlEl.value = ''; addErrorEl.hidden = true; addModal.hidden = false; addNameEl.focus(); }
 function hideAddModal() { addModal.hidden = true; }
 
 function validateUrl(raw) {
   const t = raw.trim(); if (!t) return null;
-  try { return new URL(t).toString(); } catch { try { return new URL('https://' + t).toString(); } catch { return null; } }
+  let parsed;
+  try { parsed = new URL(t); } catch { try { parsed = new URL('https://' + t); } catch { return null; } }
+  // Only HTTPS lists are allowed
+  if (parsed.protocol !== 'https:') return null;
+  return parsed.toString();
 }
 
 function confirmAdd() {
@@ -202,7 +212,7 @@ addModal.addEventListener('click', e => { if (e.target === addModal) hideAddModa
 // Mini player tab
 async function loadMiniPlayer() {
   const theme = await api.getMiniPlayerTheme();
-  const aot   = await api.getMiniPlayerAlwaysOnTop();
+  const aot = await api.getMiniPlayerAlwaysOnTop();
   document.querySelectorAll('.theme-btn').forEach(btn => {
     btn.classList.toggle('active', btn.dataset.theme === theme);
   });
@@ -250,7 +260,7 @@ function setLaStatus(msg) { document.getElementById('la-status-msg').textContent
 function showLaActive(state) {
   const isActive = state && state.isActive;
   document.getElementById('la-inactive-view').style.display = isActive ? 'none' : '';
-  document.getElementById('la-active-view').style.display   = isActive ? '' : 'none';
+  document.getElementById('la-active-view').style.display = isActive ? '' : 'none';
   if (isActive) {
     document.getElementById('la-role-label').textContent = state.isHost ? 'You are hosting' : 'You have joined';
     document.getElementById('la-party-code-display').textContent = state.partyId || '------';
@@ -324,7 +334,7 @@ document.getElementById('la-join-btn').addEventListener('click', async () => {
   try {
     api.laSaveConfig({ hostName: name });
     const result = await api.laJoinParty(code, name);
-    if (result && result.success) { setLaStatus(''); showLaActive({ isActive: true, isHost: false, partyId: code }); }
+    if (result && result.partyId) { setLaStatus(''); showLaActive({ isActive: true, isHost: false, partyId: result.partyId }); }
     else setLaStatus('Could not join. Check the code and try again.');
   } catch (e) { setLaStatus('Error: ' + e.message); }
 });
@@ -475,8 +485,8 @@ document.getElementById('la-stop-btn').addEventListener('click', async () => {
 // About tab
 async function loadAbout() {
   const info = await api.getAboutInfo();
-  document.getElementById('about-name').textContent    = info.appName;
-  document.getElementById('about-desc').textContent    = info.appDescription;
+  document.getElementById('about-name').textContent = info.appName;
+  document.getElementById('about-desc').textContent = info.appDescription;
   document.getElementById('about-version').textContent = info.translations.version;
   const gh = document.getElementById('about-github');
   gh.addEventListener('click', e => { e.preventDefault(); api.openExternal(info.githubUrl); });

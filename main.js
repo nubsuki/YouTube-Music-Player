@@ -40,6 +40,7 @@ const {
 
 let mainWindow;
 let ytView = null;
+let lastFailedUrl = null;
 let optionsView = null;
 let isOptionsOpen = false;
 const TOPBAR_HEIGHT = 38;
@@ -258,14 +259,19 @@ ipcMain.on("la:save-config", (_e, { hostName, autoHost }) => {
   if (autoHost !== undefined) {
     listenAlongAutoHost = !!autoHost && (listenAlongHostName.length >= 3);
   }
-  
+
   require("./listen-along/listenAlong").setAutoHost(listenAlongAutoHost, listenAlongHostName);
   saveConfig();
 });
 
 ipcMain.on("la:open-party-page", (_e, { partyId }) => {
+  const code = String(partyId || "").trim().toUpperCase();
+  if (!/^[A-Z0-9]{3,12}$/.test(code)) {
+    console.warn("Blocked opening party page with invalid party code");
+    return;
+  }
   const url = DEFAULT_SERVER_URL.replace(/\/$/, "");
-  shell.openExternal(`${url}/party/${partyId}`).catch(console.error);
+  shell.openExternal(`${url}/party/${code}`).catch(console.error);
 });
 
 ipcMain.on("la:copy-text", (_e, text) => {
@@ -340,9 +346,7 @@ function handleCommonShortcuts(event, input) {
     (input.control && input.key.toLowerCase() === "r")
   ) {
     if (isOptionsOpen) hideOptionsView();
-    if (ytView && !ytView.webContents.isDestroyed()) {
-      ytView.webContents.reload();
-    }
+    reloadPlayerView();
     event.preventDefault();
   } else if (input.control && input.key === ",") {
     toggleOptionsView();
@@ -417,9 +421,7 @@ ipcMain.on("topbar:toggle-options", () => {
 
 ipcMain.on("topbar:refresh", () => {
   if (isOptionsOpen) hideOptionsView();
-  if (ytView && !ytView.webContents.isDestroyed()) {
-    ytView.webContents.reload();
-  }
+  reloadPlayerView();
 });
 
 function createMiniPlayerWindow() {
@@ -599,7 +601,8 @@ ipcMain.handle("get-filters", async () => {
 
 ipcMain.handle("get-translations", (event, keys) => {
   const translations = {};
-  keys.forEach((key) => {
+  const requestedKeys = Array.isArray(keys) ? keys : [];
+  requestedKeys.forEach((key) => {
     translations[key] = t(key);
   });
   return translations;
@@ -629,7 +632,7 @@ ipcMain.on("reset-adblock-stats", () => {
 
 ipcMain.on("save-filters", async (event, newFilters) => {
   await saveFiltersExternal(newFilters);
-  const success = await initFiltersExternal(true);
+  const success = await initFiltersExternal(false);
   adblockActive = !!success;
   if (success) setupWRExternal();
 });
@@ -638,7 +641,7 @@ ipcMain.on("reset-filters", async (event) => {
   try {
     await resetFiltersExternal();
     console.log("User filters reset to default successfully.");
-    const success = await initFiltersExternal(true);
+    const success = await initFiltersExternal(false);
     adblockActive = !!success;
     if (success) setupWRExternal();
   } catch (error) {
@@ -669,19 +672,77 @@ ipcMain.handle("get-ad-skipper-settings", () => {
 });
 
 ipcMain.on("save-ad-skipper-settings", async (event, settings) => {
-  videoAdSkipperEnabled = settings.enabled;
-  VideoAdSkipSpeed = settings.speed;
+  videoAdSkipperEnabled = !!settings.enabled;
+  VideoAdSkipSpeed = settings.speed || 2;
   await saveConfig();
+  // Apply immediately without requiring a page reload
+  if (ytView && !ytView.webContents.isDestroyed()) {
+    injectVideoAdSkipper(ytView.webContents, {
+      enabled: videoAdSkipperEnabled,
+      speed: VideoAdSkipSpeed,
+      interval: VideoAdSkipInterval,
+    });
+  }
   console.log(
     `Video ad skipper settings updated: Enabled=${videoAdSkipperEnabled}, Speed=${VideoAdSkipSpeed}x`,
   );
 });
 
-ipcMain.on("open-external-link", (event, url) => {
+const ALLOWED_EXTERNAL_PROTOCOLS = new Set(["https:", "http:"]);
+
+function openExternalSafely(rawUrl) {
+  let parsed;
+  try {
+    parsed = new URL(String(rawUrl));
+  } catch {
+    console.warn("Blocked external link with invalid URL");
+    return;
+  }
+  if (!ALLOWED_EXTERNAL_PROTOCOLS.has(parsed.protocol)) {
+    console.warn(`Blocked external link with unsupported protocol: ${parsed.protocol}`);
+    return;
+  }
   shell
-    .openExternal(url)
+    .openExternal(parsed.toString())
     .catch((error) => console.error("Error opening external link:", error));
+}
+
+ipcMain.on("open-external-link", (event, url) => {
+  openExternalSafely(url);
 });
+
+// Hosts the embedded YouTube Music view is allowed to navigate to
+const ALLOWED_YT_HOST_SUFFIXES = [
+  "youtube.com",
+  "google.com",
+  "googleusercontent.com",
+  "gstatic.com",
+  "googlevideo.com",
+  "ggpht.com",
+  "ytimg.com",
+];
+
+function isAllowedYtMusicHost(rawUrl) {
+  let hostname;
+  try {
+    hostname = new URL(String(rawUrl)).hostname.toLowerCase();
+  } catch {
+    return false;
+  }
+  return ALLOWED_YT_HOST_SUFFIXES.some(
+    (suffix) => hostname === suffix || hostname.endsWith(`.${suffix}`),
+  );
+}
+
+// Reload the player, retrying the last real URL if the offline page is showing
+function reloadPlayerView() {
+  if (!ytView || ytView.webContents.isDestroyed()) return;
+  if (ytView.webContents.getURL().startsWith("file:")) {
+    ytView.webContents.loadURL(lastFailedUrl || "https://music.youtube.com");
+  } else {
+    ytView.webContents.reload();
+  }
+}
 
 // Options window IPC
 ipcMain.handle("options:get-app-settings", () => {
@@ -1094,6 +1155,26 @@ async function createWindow() {
   ytView.setAutoResize({ width: true, height: true });
   updateViewBounds();
 
+  // Restrict navigation and popups from the remote YouTube Music content
+  ytView.webContents.setWindowOpenHandler(({ url }) => {
+    if (isAllowedYtMusicHost(url)) {
+      return {
+        action: "allow",
+        overrideBrowserWindowOptions: {
+          webPreferences: { nodeIntegration: false, contextIsolation: true, sandbox: true },
+        },
+      };
+    }
+    openExternalSafely(url);
+    return { action: "deny" };
+  });
+  ytView.webContents.on("will-navigate", (event, url) => {
+    if (!isAllowedYtMusicHost(url)) {
+      event.preventDefault();
+      openExternalSafely(url);
+    }
+  });
+
   const saveMainWindowBounds = () => {
     if (mainWindow && !mainWindow.isDestroyed()) {
       const bounds = mainWindow.getBounds();
@@ -1268,6 +1349,7 @@ async function createWindow() {
         console.log(
           `Failed to load ${validatedURL}: ${errorDescription} (${errorCode})`,
         );
+        lastFailedUrl = validatedURL || lastFailedUrl;
         ytView.webContents.loadFile(path.join(__dirname, "offline/offline.html"));
       }
     },
@@ -1276,6 +1358,9 @@ async function createWindow() {
   // Hide cast buttons & inject scripts on every load / refresh
   let initialLoadDone = false;
   ytView.webContents.on("did-finish-load", () => {
+    if (!ytView.webContents.getURL().startsWith("file:")) {
+      lastFailedUrl = null;
+    }
     ytView.webContents.insertCSS(`
       .ytmusic-player-bar .middle-controls [aria-label*="cast" i],
       .ytmusic-player-bar .middle-controls [aria-label*="connect" i],
