@@ -38,6 +38,15 @@ const {
   DEFAULT_SERVER_URL,
 } = require("./listen-along/listenAlong");
 
+const {
+  captureCurrentSongState,
+  saveLastSongSession,
+  computeStartupUrl,
+  applyStartupPlayback,
+} = require("./player/sessionRestore");
+const { hideCastButtons } = require("./player/castHider");
+const { injectAutoContinue } = require("./player/autoContinue");
+
 let mainWindow;
 let ytView = null;
 let lastFailedUrl = null;
@@ -1059,72 +1068,17 @@ function toggleTrayBehavior(enabled) {
   console.log(`Minimize to tray: ${enabled ? "Enabled" : "Disabled"}`);
 }
 
-async function captureCurrentSongState() {
-  if (!ytView || ytView.webContents.isDestroyed()) return null;
-  try {
-    return await ytView.webContents.executeJavaScript(`
-      (() => {
-        try {
-          const player = document.getElementById('movie_player');
-          const video = document.querySelector('video');
-          const audio = document.querySelector('audio');
-          const media = (video && !isNaN(video.duration)) ? video : (audio && !isNaN(audio.duration)) ? audio : (video || audio);
-
-          let songUrl = '';
-          if (player && typeof player.getVideoUrl === 'function') {
-            const vUrl = player.getVideoUrl();
-            if (vUrl && (vUrl.includes('v=') || vUrl.includes('/watch'))) songUrl = vUrl;
-          }
-          if (!songUrl && player && typeof player.getVideoData === 'function') {
-            const vData = player.getVideoData();
-            if (vData && vData.video_id) {
-              songUrl = 'https://music.youtube.com/watch?v=' + vData.video_id;
-            }
-          }
-          if (!songUrl) {
-            const link = document.querySelector('ytmusic-player-bar a[href*="watch?v="]') ||
-                         document.querySelector('.title.ytmusic-player-bar a') ||
-                         document.querySelector('a.ytp-title-link');
-            if (link && link.href && (link.href.includes('v=') || link.href.includes('/watch'))) {
-              songUrl = link.href;
-            }
-          }
-          if (!songUrl) {
-            const loc = window.location.href;
-            if (loc && (loc.includes('music.youtube.com/watch') || loc.includes('v='))) {
-              songUrl = loc;
-            }
-          }
-
-          let currentTime = 0;
-          if (player && typeof player.getCurrentTime === 'function') {
-            const t = player.getCurrentTime();
-            if (Number.isFinite(t) && t > 0) currentTime = Math.floor(t);
-          }
-          if (!currentTime && media && Number.isFinite(media.currentTime) && media.currentTime > 0) {
-            currentTime = Math.floor(media.currentTime);
-          }
-
-          const isPlaying = media ? (!media.paused && !media.ended && media.currentTime > 0) : false;
-
-          return { songUrl, currentTime, isPlaying };
-        } catch (e) {
-          return null;
-        }
-      })()
-    `);
-  } catch (err) {
-    return null;
-  }
-}
-
 function toggleReOpenBehavior(enabled) {
   openLastSong = enabled;
   if (enabled) {
-    captureCurrentSongState().then((st) => {
-      if (st && st.songUrl) lastUrl = st.songUrl;
+    if (ytView && !ytView.webContents.isDestroyed()) {
+      captureCurrentSongState(ytView.webContents).then((st) => {
+        if (st && st.songUrl) lastUrl = st.songUrl;
+        saveConfig();
+      });
+    } else {
       saveConfig();
-    });
+    }
   } else {
     lastUrl = "https://music.youtube.com";
     saveConfig();
@@ -1328,46 +1282,16 @@ async function createWindow() {
 
       try {
         if (ytView && !ytView.webContents.isDestroyed()) {
-          if (openLastSong) {
-            const state = await captureCurrentSongState();
-            let songUrl = state && state.songUrl ? state.songUrl : ytView.webContents.getURL();
-            if (songUrl && isAllowedYtMusicHost(songUrl)) {
-              if (resumePlayback && state && state.currentTime > 0 && songUrl.includes("/watch")) {
-                try {
-                  const urlObj = new URL(songUrl);
-                  urlObj.searchParams.set("t", state.currentTime);
-                  songUrl = urlObj.toString();
-                } catch {}
-              } else if (songUrl.includes("/watch")) {
-                try {
-                  const urlObj = new URL(songUrl);
-                  urlObj.searchParams.delete("t");
-                  songUrl = urlObj.toString();
-                } catch {}
-              }
-              lastUrl = songUrl;
-            }
-          } else {
-            lastUrl = "https://music.youtube.com";
-          }
-
+          lastUrl = await saveLastSongSession(ytView.webContents, {
+            openLastSong,
+            resumePlayback,
+            defaultUrl: "https://music.youtube.com",
+          });
           await saveConfig();
           console.log(`URL saved: ${lastUrl}`);
-
-          // Pause audio and video before closing
-          await ytView.webContents.executeJavaScript(`
-            try {
-              const player = document.getElementById('movie_player');
-              if (player && typeof player.pauseVideo === 'function') player.pauseVideo();
-              const audio = document.querySelector('audio');
-              const video = document.querySelector('video');
-              if (audio && !audio.paused) audio.pause();
-              if (video && !video.paused) video.pause();
-            } catch (e) {}
-          `).catch(() => {});
         }
       } catch (error) {
-        console.log("Error pausing audio:", error);
+        console.log("Error closing window:", error);
       } finally {
         if (mainWindow && !mainWindow.isDestroyed()) {
           mainWindow.destroy();
@@ -1377,29 +1301,7 @@ async function createWindow() {
     }
   });
 
-  const youtubeMusicDomain = "music.youtube.com";
-
-  let finalUrlToLoad = `https://${youtubeMusicDomain}`;
-
-  try {
-    const parsedUrl = new URL(lastUrl);
-    if (parsedUrl.hostname === youtubeMusicDomain) {
-      if (openLastSong && !resumePlayback) {
-        parsedUrl.searchParams.delete("t");
-      } else if (!openLastSong) {
-        parsedUrl.pathname = "/";
-        parsedUrl.search = "";
-      }
-      finalUrlToLoad = parsedUrl.toString();
-    } else {
-      console.warn(
-        `Attempted to load an invalid URL: ${lastUrl}. Defaulting to ${finalUrlToLoad}`,
-      );
-    }
-  } catch (e) {
-    console.error(`Error parsing lastUrl "${lastUrl}":`, e.message);
-  }
-
+  const finalUrlToLoad = computeStartupUrl(lastUrl, { openLastSong, resumePlayback });
   ytView.webContents.loadURL(finalUrlToLoad);
   console.log(`Loading URL: ${finalUrlToLoad}`);
 
@@ -1423,33 +1325,7 @@ async function createWindow() {
     if (!ytView.webContents.getURL().startsWith("file:")) {
       lastFailedUrl = null;
     }
-    ytView.webContents.insertCSS(`
-      .ytmusic-player-bar .middle-controls [aria-label*="cast" i],
-      .ytmusic-player-bar .middle-controls [aria-label*="connect" i],
-      ytmusic-menu-service-item-renderer[aria-label*="connect" i],
-      ytmusic-menu-service-item-renderer[aria-label*="cast" i],
-      tp-yt-google-cast,
-      .ytp-button[aria-label*="cast" i],
-      .ytp-button[data-tooltip-target-id*="cast"],
-      [data-title*="Cast"],
-      [data-title*="Connect"],
-      button[aria-label*="Connect to a device"],
-      button[aria-label*="Cast"],
-      ytmusic-cast-button,
-      google-cast-launcher,
-      ytmusic-nav-bar ytmusic-cast-button,
-      ytmusic-nav-bar [aria-label*="cast" i],
-      ytmusic-nav-bar [aria-label*="connect" i],
-      ytmusic-nav-bar [role="button"][aria-label*="cast" i],
-      ytmusic-nav-bar [role="button"][aria-label*="connect" i],
-      .ytmusic-menu-service-item-renderer:has([aria-label*="cast" i]),
-      .ytmusic-menu-service-item-renderer:has([aria-label*="connect" i])
-      {
-        display: none !important;
-        visibility: hidden !important;
-      }
-    `);
-    console.log("Cast buttons hidden");
+    hideCastButtons(ytView.webContents);
 
     injectVideoAdSkipper(ytView.webContents, {
       enabled: videoAdSkipperEnabled,
@@ -1471,111 +1347,10 @@ async function createWindow() {
         console.log(`[ListenAlong] Triggering auto-host on startup for "${listenAlongHostName}"...`);
         require("./listen-along/listenAlong").triggerAutoHostOnStartup(listenAlongHostName);
       }
-      if (openLastSong && lastUrl.includes("/watch")) {
-        setTimeout(() => {
-          if (!ytView || ytView.webContents.isDestroyed()) return;
-          ytView.webContents.executeJavaScript(`
-            try {
-              const player = document.getElementById('movie_player');
-              const media = document.querySelector('video') || document.querySelector('audio');
-              if (${resumePlayback}) {
-                if (player && typeof player.playVideo === 'function') {
-                  player.playVideo();
-                } else if (media && media.paused) {
-                  media.play().catch(() => {});
-                }
-              } else {
-                if (player && typeof player.pauseVideo === 'function') {
-                  player.pauseVideo();
-                } else if (media && !media.paused) {
-                  media.pause();
-                }
-              }
-            } catch (e) {}
-          `).catch(() => {});
-        }, 1500);
-      }
+      applyStartupPlayback(ytView.webContents, { openLastSong, resumePlayback, lastUrl });
     }
 
-    // Inject JavaScript to auto-continue listening
-    ytView.webContents.executeJavaScript(`
-      (function() {
-        if (window.__ytmpAutoContinueInitialized) return;
-        window.__ytmpAutoContinueInitialized = true;
-
-        const checkInterval = ${autoContinueListeningInterval};
-        let lastDismissTime = 0;
-
-        function dismissDialog() {
-          try {
-            // Prevent rapid re-clicking
-            const now = Date.now();
-            if (now - lastDismissTime < 2000) return false;
-        
-            // Multiple dialog selectors
-            const dialogSelectors = [
-              'tp-yt-paper-dialog.style-scope',
-              'ytmusic-you-there-renderer',
-              'tp-yt-paper-dialog[role="dialog"]'
-            ];
-        
-            let dialog = null;
-            for (const selector of dialogSelectors) {
-              const element = document.querySelector(selector);
-              if (element && window.getComputedStyle(element).display !== 'none' && element.offsetParent !== null) {
-                dialog = element;
-                break;
-              }
-            }
-            
-            if (!dialog) return false;
-        
-            // Check dialog content
-            const dialogText = dialog.textContent?.toLowerCase() || '';
-            const isKeepListeningDialog = dialogText.includes('still listening') || 
-                                           dialogText.includes('still there') || 
-                                           dialogText.includes('you there') ||
-                                           dialogText.includes('video paused') ||
-                                           dialogText.includes('continue watching');
-
-            if (!isKeepListeningDialog) return false;
-
-            // Multiple button selectors
-            const buttonSelectors = [
-              'yt-button-renderer.ytmusic-you-there-renderer',
-              'tp-yt-paper-button#button',
-              '[aria-label*="Yes" i]',
-              '[aria-label*="Continue" i]',
-              'button'
-            ];
-
-            for (const selector of buttonSelectors) {
-              const confirmButton = dialog.querySelector(selector);
-              if (confirmButton && confirmButton.offsetParent !== null && !confirmButton.disabled) {
-                confirmButton.click();
-                lastDismissTime = now;
-                console.log('Auto-dismissed "Keep listening?" dialog');
-                return true;
-              }
-            }
-          } catch (e) {
-            console.error('Error in dismissDialog:', e);
-          }
-          return false;
-        }
-
-        // Check periodically
-        setInterval(dismissDialog, checkInterval);
-
-        // Watch for dialog appearing
-        if (document.body) {
-          const observer = new MutationObserver(dismissDialog);
-          observer.observe(document.body, { childList: true, subtree: true });
-        }
-
-        console.log('Auto-continue listening feature initialized');
-      })();
-    `);
+    injectAutoContinue(ytView.webContents, autoContinueListeningInterval);
   });
 }
 
