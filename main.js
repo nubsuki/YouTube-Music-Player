@@ -479,12 +479,16 @@ function createMiniPlayerWindow() {
     }
   });
 
+  let saveMiniBoundsTimer = null;
   const saveMiniPlayerPosition = () => {
     if (miniPlayerWindow && !miniPlayerWindow.isDestroyed()) {
       const bounds = miniPlayerWindow.getBounds();
       // Keep width and height out of the saved config to avoid growth on Windows DPI scaling
       miniPlayerBounds = { x: bounds.x, y: bounds.y };
-      saveConfig();
+      if (saveMiniBoundsTimer) clearTimeout(saveMiniBoundsTimer);
+      saveMiniBoundsTimer = setTimeout(() => {
+        saveConfig();
+      }, 500);
     }
   };
 
@@ -516,11 +520,13 @@ function getPlayerWebContents() {
 }
 
 let miniPlayerStateInterval;
+let miniPlayerStatePollingInFlight = false;
 function startMiniPlayerStatePolling() {
   if (miniPlayerStateInterval) clearInterval(miniPlayerStateInterval);
 
   miniPlayerStateInterval = setInterval(async () => {
     if (
+      miniPlayerStatePollingInFlight ||
       !miniPlayerWindow ||
       miniPlayerWindow.isDestroyed() ||
       !mainWindow ||
@@ -528,6 +534,7 @@ function startMiniPlayerStatePolling() {
     )
       return;
 
+    miniPlayerStatePollingInFlight = true;
     try {
       const player = getPlayerWebContents();
       if (!player) return;
@@ -591,6 +598,8 @@ function startMiniPlayerStatePolling() {
       }
     } catch (e) {
       console.error("Error polling player state:", e);
+    } finally {
+      miniPlayerStatePollingInFlight = false;
     }
   }, 1000);
 }
@@ -1050,9 +1059,76 @@ function toggleTrayBehavior(enabled) {
   console.log(`Minimize to tray: ${enabled ? "Enabled" : "Disabled"}`);
 }
 
+async function captureCurrentSongState() {
+  if (!ytView || ytView.webContents.isDestroyed()) return null;
+  try {
+    return await ytView.webContents.executeJavaScript(`
+      (() => {
+        try {
+          const player = document.getElementById('movie_player');
+          const video = document.querySelector('video');
+          const audio = document.querySelector('audio');
+          const media = (video && !isNaN(video.duration)) ? video : (audio && !isNaN(audio.duration)) ? audio : (video || audio);
+
+          let songUrl = '';
+          if (player && typeof player.getVideoUrl === 'function') {
+            const vUrl = player.getVideoUrl();
+            if (vUrl && (vUrl.includes('v=') || vUrl.includes('/watch'))) songUrl = vUrl;
+          }
+          if (!songUrl && player && typeof player.getVideoData === 'function') {
+            const vData = player.getVideoData();
+            if (vData && vData.video_id) {
+              songUrl = 'https://music.youtube.com/watch?v=' + vData.video_id;
+            }
+          }
+          if (!songUrl) {
+            const link = document.querySelector('ytmusic-player-bar a[href*="watch?v="]') ||
+                         document.querySelector('.title.ytmusic-player-bar a') ||
+                         document.querySelector('a.ytp-title-link');
+            if (link && link.href && (link.href.includes('v=') || link.href.includes('/watch'))) {
+              songUrl = link.href;
+            }
+          }
+          if (!songUrl) {
+            const loc = window.location.href;
+            if (loc && (loc.includes('music.youtube.com/watch') || loc.includes('v='))) {
+              songUrl = loc;
+            }
+          }
+
+          let currentTime = 0;
+          if (player && typeof player.getCurrentTime === 'function') {
+            const t = player.getCurrentTime();
+            if (Number.isFinite(t) && t > 0) currentTime = Math.floor(t);
+          }
+          if (!currentTime && media && Number.isFinite(media.currentTime) && media.currentTime > 0) {
+            currentTime = Math.floor(media.currentTime);
+          }
+
+          const isPlaying = media ? (!media.paused && !media.ended && media.currentTime > 0) : false;
+
+          return { songUrl, currentTime, isPlaying };
+        } catch (e) {
+          return null;
+        }
+      })()
+    `);
+  } catch (err) {
+    return null;
+  }
+}
+
 function toggleReOpenBehavior(enabled) {
   openLastSong = enabled;
-  saveConfig();
+  if (enabled) {
+    captureCurrentSongState().then((st) => {
+      if (st && st.songUrl) lastUrl = st.songUrl;
+      saveConfig();
+    });
+  } else {
+    lastUrl = "https://music.youtube.com";
+    saveConfig();
+  }
   createMenu();
   console.log(`Open last song: ${enabled ? "Enabled" : "Disabled"}`);
 }
@@ -1174,7 +1250,13 @@ async function createWindow() {
       openExternalSafely(url);
     }
   });
+  ytView.webContents.on("did-navigate-in-page", (_e, url) => {
+    if (openLastSong && url && isAllowedYtMusicHost(url) && (url.includes("/watch") || url.includes("v="))) {
+      lastUrl = url;
+    }
+  });
 
+  let saveMainWindowBoundsTimer = null;
   const saveMainWindowBounds = () => {
     if (mainWindow && !mainWindow.isDestroyed()) {
       const bounds = mainWindow.getBounds();
@@ -1184,7 +1266,10 @@ async function createWindow() {
         width: bounds.width,
         height: bounds.height,
       };
-      saveConfig();
+      if (saveMainWindowBoundsTimer) clearTimeout(saveMainWindowBoundsTimer);
+      saveMainWindowBoundsTimer = setTimeout(() => {
+        saveConfig();
+      }, 500);
     }
   };
 
@@ -1243,70 +1328,47 @@ async function createWindow() {
 
       try {
         if (ytView && !ytView.webContents.isDestroyed()) {
-          await ytView.webContents.executeJavaScript(`
-            try {
-              const audio = document.querySelector('audio');
-              const video = document.querySelector('video');
-              const playButton = document.querySelector('[data-testid="play-pause-button"], .play-pause-button, [aria-label*="pause" i], [title*="pause" i]');
-              
-              if (audio && !audio.paused) audio.pause();
-              if (video && !video.paused) video.pause();
-              if (playButton && playButton.getAttribute('aria-label') && playButton.getAttribute('aria-label').toLowerCase().includes('pause')) {
-                playButton.click();
-              }
-            } catch (e) {
-              console.log('Could not pause audio:', e);
-            }
-          `);
-          let currentUrl = ytView.webContents.getURL();
-
-          // Only save URL/time parameter if 'openLastSong' is enabled
           if (openLastSong) {
-            // Only add time parameter if 'resumePlayback' is enabled AND it's a watch page
-            if (
-              resumePlayback &&
-              currentUrl.includes("music.youtube.com/watch")
-            ) {
-              // Execute script to get current time in seconds
-              const currentTimeValue = await ytView.webContents
-                .executeJavaScript(`
-                  // Get the 'value' attribute of the progress bar slider, which is the time in seconds
-                  document.querySelector('#progress-bar > #sliderContainer > div > #sliderBar')?.getAttribute('value');
-              `);
-
-              // Convert the value to an integer
-              const timeInSeconds = parseInt(currentTimeValue, 10);
-
-              // Check if the time is a valid positive number
-              if (!isNaN(timeInSeconds) && timeInSeconds > 0) {
-                // Use URL object for clean parameter management
+            const state = await captureCurrentSongState();
+            let songUrl = state && state.songUrl ? state.songUrl : ytView.webContents.getURL();
+            if (songUrl && isAllowedYtMusicHost(songUrl)) {
+              if (resumePlayback && state && state.currentTime > 0 && songUrl.includes("/watch")) {
                 try {
-                  const urlObject = new URL(currentUrl);
-                  urlObject.searchParams.set("t", timeInSeconds);
-                  currentUrl = urlObject.toString();
-                } catch (e) {
-                  console.log(
-                    "Error modifying URL with time parameter:",
-                    e.message,
-                  );
-                }
+                  const urlObj = new URL(songUrl);
+                  urlObj.searchParams.set("t", state.currentTime);
+                  songUrl = urlObj.toString();
+                } catch {}
+              } else if (songUrl.includes("/watch")) {
+                try {
+                  const urlObj = new URL(songUrl);
+                  urlObj.searchParams.delete("t");
+                  songUrl = urlObj.toString();
+                } catch {}
               }
+              lastUrl = songUrl;
             }
           } else {
-            // If openLastSong is disabled, force default URL for next launch
-            currentUrl = "https://music.youtube.com";
+            lastUrl = "https://music.youtube.com";
           }
 
-          lastUrl = currentUrl;
           await saveConfig();
           console.log(`URL saved: ${lastUrl}`);
+
+          // Pause audio and video before closing
+          await ytView.webContents.executeJavaScript(`
+            try {
+              const player = document.getElementById('movie_player');
+              if (player && typeof player.pauseVideo === 'function') player.pauseVideo();
+              const audio = document.querySelector('audio');
+              const video = document.querySelector('video');
+              if (audio && !audio.paused) audio.pause();
+              if (video && !video.paused) video.pause();
+            } catch (e) {}
+          `).catch(() => {});
         }
-        if (mainWindow && !mainWindow.isDestroyed()) {
-          mainWindow.destroy();
-        }
-        app.quit();
       } catch (error) {
         console.log("Error pausing audio:", error);
+      } finally {
         if (mainWindow && !mainWindow.isDestroyed()) {
           mainWindow.destroy();
         }
@@ -1409,11 +1471,38 @@ async function createWindow() {
         console.log(`[ListenAlong] Triggering auto-host on startup for "${listenAlongHostName}"...`);
         require("./listen-along/listenAlong").triggerAutoHostOnStartup(listenAlongHostName);
       }
+      if (openLastSong && lastUrl.includes("/watch")) {
+        setTimeout(() => {
+          if (!ytView || ytView.webContents.isDestroyed()) return;
+          ytView.webContents.executeJavaScript(`
+            try {
+              const player = document.getElementById('movie_player');
+              const media = document.querySelector('video') || document.querySelector('audio');
+              if (${resumePlayback}) {
+                if (player && typeof player.playVideo === 'function') {
+                  player.playVideo();
+                } else if (media && media.paused) {
+                  media.play().catch(() => {});
+                }
+              } else {
+                if (player && typeof player.pauseVideo === 'function') {
+                  player.pauseVideo();
+                } else if (media && !media.paused) {
+                  media.pause();
+                }
+              }
+            } catch (e) {}
+          `).catch(() => {});
+        }, 1500);
+      }
     }
 
     // Inject JavaScript to auto-continue listening
     ytView.webContents.executeJavaScript(`
       (function() {
+        if (window.__ytmpAutoContinueInitialized) return;
+        window.__ytmpAutoContinueInitialized = true;
+
         const checkInterval = ${autoContinueListeningInterval};
         let lastDismissTime = 0;
 
@@ -1479,8 +1568,10 @@ async function createWindow() {
         setInterval(dismissDialog, checkInterval);
 
         // Watch for dialog appearing
-        const observer = new MutationObserver(dismissDialog);
-        observer.observe(document.body, { childList: true, subtree: true });
+        if (document.body) {
+          const observer = new MutationObserver(dismissDialog);
+          observer.observe(document.body, { childList: true, subtree: true });
+        }
 
         console.log('Auto-continue listening feature initialized');
       })();

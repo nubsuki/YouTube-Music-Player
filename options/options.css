@@ -448,8 +448,6 @@ body {
 .about-icon {
   width: 80px;
   height: 80px;
-  border-radius: 20px;
-  box-shadow: 0 8px 24px rgba(227, 11, 92, 0.25);
 }
 .about-name {
   font-size: 24px;
