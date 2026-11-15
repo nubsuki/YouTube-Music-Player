@@ -1,8 +1,8 @@
 const { io } = require("socket.io-client");
 const { Notification } = require("electron");
 
-const DEFAULT_SERVER_URL = "https://ytms.nubsuki.xyz";
-const CREATE_PARTY_ENDPOINT = "https://ytms.nubsuki.xyz/api/party/create";
+const DEFAULT_SERVER_URL = "https://aurplayer.nubsuki.xyz";
+const CREATE_PARTY_ENDPOINT = "https://aurplayer.nubsuki.xyz/api/party/create";
 
 function normalizeName(raw) {
   if (typeof raw !== "string") return "";

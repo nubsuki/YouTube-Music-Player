@@ -32,7 +32,7 @@ A fast, clean, and feature-packed desktop client for **YouTube Music**.
   - *Violet* — Violet accent
   - *Nord* — Arctic cool blue accent
   - *Amber* — Warm golden amber accent
-- **Listen Along (Beta)**: Synchronized real-time group listening with friends anywhere in the world via party codes, web view, and optional auto-hosting on startup. [Learn more](https://github.com/nubsuki/yt-music-sync-server) or check active parties at [ytms.nubsuki.xyz](https://ytms.nubsuki.xyz).
+- **Listen Along (Beta)**: Synchronized real-time group listening with friends anywhere in the world via party codes, web view, and optional auto-hosting on startup. [Learn more](https://github.com/nubsuki/Aurplayer-sync-server) or check active parties at [aurplayer.nubsuki.xyz](https://aurplayer.nubsuki.xyz).
 - **Discord Rich Presence**: Displays your current song, artist, album art, and Listen Along sync status in your Discord profile.
 - **Filter Connection**: Network request filtering using customizable rule lists.
 - **Custom Filter Lists**: Add, remove, and toggle custom request filter lists with persistent configuration and 24-hour auto-updates.
