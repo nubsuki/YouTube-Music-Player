@@ -37,6 +37,7 @@ const openLastSongEl = document.getElementById('open-last-song');
 const resumePlayEl = document.getElementById('resume-playback');
 const minToTrayEl = document.getElementById('minimize-to-tray');
 const mpOnMinimizeEl = document.getElementById('miniplayer-on-minimize');
+const discordRpcEl = document.getElementById('discord-rpc');
 const resumeRow = document.getElementById('resume-row');
 const mpMinimizeRow = document.getElementById('miniplayer-on-minimize-row');
 
@@ -53,11 +54,12 @@ async function autoSaveAppSettings() {
     resumePlayback: resumePlayEl.checked,
     minimizeToTray: minToTrayEl.checked,
     openMiniPlayerOnMinimize: mpOnMinimizeEl.checked,
+    discordRpcEnabled: discordRpcEl ? discordRpcEl.checked : true,
   });
 }
 
-[startWithSystem, openLastSongEl, resumePlayEl, minToTrayEl, mpOnMinimizeEl].forEach(el => {
-  el.addEventListener('change', autoSaveAppSettings);
+[startWithSystem, openLastSongEl, resumePlayEl, minToTrayEl, mpOnMinimizeEl, discordRpcEl].forEach(el => {
+  if (el) el.addEventListener('change', autoSaveAppSettings);
 });
 
 async function loadAppSettings() {
@@ -67,6 +69,9 @@ async function loadAppSettings() {
   resumePlayEl.checked = s.resumePlayback;
   minToTrayEl.checked = s.minimizeToTray;
   mpOnMinimizeEl.checked = s.openMiniPlayerOnMinimize;
+  if (discordRpcEl) {
+    discordRpcEl.checked = s.discordRpcEnabled !== false;
+  }
   syncSubToggles();
 }
 

@@ -27,7 +27,11 @@ const {
   resetAdblockStats: resetAdblockStatsExternal,
 } = require("./adblock/filters");
 const { injectVideoAdSkipper } = require("./adblock/videoAdSkipper");
-const { initDiscordRpc } = require("./integrations/discordRpc");
+const {
+  initDiscordRpc,
+  setDiscordRpcEnabled,
+  isDiscordRpcEnabled,
+} = require("./integrations/discordRpc");
 const {
   initListenAlong,
   createParty,
@@ -70,6 +74,7 @@ let openLastSong = false;
 let resumePlayback = false;
 let lastUrl = "https://music.youtube.com";
 let mainWindowBounds = { x: undefined, y: undefined, width: 1200, height: 800 };
+let discordRpcEnabled = true;
 
 // Listen Along
 let listenAlongServerUrl = DEFAULT_SERVER_URL;
@@ -158,6 +163,7 @@ async function loadConfig() {
       ? config.lastUrl || "https://music.youtube.com"
       : "https://music.youtube.com";
     resumePlayback = config.resumePlayback || false;
+    discordRpcEnabled = config.discordRpcEnabled !== undefined ? !!config.discordRpcEnabled : true;
     mainWindowBounds = config.mainWindowBounds || {
       x: undefined,
       y: undefined,
@@ -194,6 +200,7 @@ async function saveConfig() {
       lastUrl: lastUrl,
       openLastSong: openLastSong,
       resumePlayback: resumePlayback,
+      discordRpcEnabled: discordRpcEnabled,
       miniPlayerBounds: miniConfig.miniPlayerBounds,
       mainWindowBounds: mainWindowBounds,
       miniPlayerTheme: miniConfig.miniPlayerTheme,
@@ -614,6 +621,7 @@ ipcMain.handle("options:get-app-settings", () => {
     resumePlayback,
     minimizeToTray,
     openMiniPlayerOnMinimize: getOpenMiniPlayerOnMinimize(),
+    discordRpcEnabled,
   };
 });
 
@@ -625,6 +633,11 @@ ipcMain.on("options:save-app-settings", (event, s) => {
   if (typeof s.resumePlayback === "boolean") toggleResumeBehavior(s.resumePlayback);
   if (typeof s.minimizeToTray === "boolean") toggleTrayBehavior(s.minimizeToTray);
   if (typeof s.openMiniPlayerOnMinimize === "boolean") toggleMiniPlayerOnMinimize(s.openMiniPlayerOnMinimize);
+  if (typeof s.discordRpcEnabled === "boolean" && s.discordRpcEnabled !== discordRpcEnabled) {
+    discordRpcEnabled = s.discordRpcEnabled;
+    setDiscordRpcEnabled(discordRpcEnabled);
+    saveConfig();
+  }
 });
 
 ipcMain.handle("options:check-for-updates", async () => {
@@ -1074,7 +1087,7 @@ async function createWindow() {
         isDestroyed: () => !ytView || ytView.webContents.isDestroyed(),
         loadURL: (url) => ytView.webContents.loadURL(url),
       };
-      initDiscordRpc(playerHost);
+      initDiscordRpc(playerHost, discordRpcEnabled);
       initListenAlong(playerHost, pushListenAlongState);
       require("./listen-along/listenAlong").setAutoHost(listenAlongAutoHost, listenAlongHostName);
       if (listenAlongAutoHost && listenAlongHostName && listenAlongHostName.trim().length >= 3) {
