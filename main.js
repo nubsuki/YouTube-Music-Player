@@ -520,7 +520,7 @@ ipcMain.handle("get-about-info", () => {
     appVersion: APP_VERSION,
     appDescription: t("about_app_description"),
     disclaimer: t("about_disclaimer"),
-    githubUrl: "https://github.com/nubsuki/YouTube-Music-Player",
+    githubUrl: "https://github.com/nubsuki/AurPlayer",
     translations: {
       accept: t("accept"),
       version: t("version_label", APP_VERSION),
@@ -903,7 +903,7 @@ async function createWindow() {
     minWidth: 800,
     minHeight: 600,
     icon: iconPath,
-    title: "YouTube Music",
+    title: "AurPlayer",
     titleBarStyle: "hidden",
     titleBarOverlay: {
       color: "#07070a",
@@ -985,7 +985,7 @@ async function createWindow() {
 
   ytView.webContents.on("page-title-updated", (_e, title) => {
     if (mainWindow && !mainWindow.isDestroyed()) {
-      mainWindow.setTitle(title || "YouTube Music");
+      mainWindow.setTitle(title || "AurPlayer");
     }
   });
   mainWindow.on("page-title-updated", (e) => {
@@ -1016,7 +1016,7 @@ async function createWindow() {
       if (tray && !mainWindow.trayNotificationShown) {
         tray.displayBalloon({
           iconType: "info",
-          title: "YouTube Music",
+          title: "AurPlayer",
           content: t("notify_tray"),
         });
         mainWindow.trayNotificationShown = true;
