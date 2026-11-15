@@ -453,6 +453,16 @@ body {
 .about-icon {
   width: 80px;
   height: 80px;
+  border-radius: 20px;
+  object-fit: cover;
+  box-shadow: 0 0 30px rgba(245, 180, 70, 0.35), 0 10px 25px rgba(0, 0, 0, 0.5);
+  border: 1px solid rgba(245, 180, 70, 0.2);
+  transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.3s ease, border-color 0.3s ease;
+}
+.about-icon:hover {
+  transform: translateY(-2px) scale(1.04);
+  box-shadow: 0 0 45px rgba(245, 180, 70, 0.55), 0 14px 30px rgba(0, 0, 0, 0.6);
+  border-color: rgba(245, 180, 70, 0.35);
 }
 .about-name {
   font-size: 24px;
@@ -481,7 +491,19 @@ body {
   justify-content: center;
 }
 .about-actions .btn {
-  padding: 10px 20px;
+  padding: 10px 22px;
+  border-radius: 12px;
+  transition: all 0.2s ease;
+}
+.about-actions .btn-secondary:hover {
+  box-shadow: 0 0 16px rgba(255, 255, 255, 0.12);
+  border-color: rgba(255, 255, 255, 0.25);
+}
+.about-actions .btn-primary {
+  box-shadow: 0 0 16px var(--accent-glow);
+}
+.about-actions .btn-primary:hover {
+  box-shadow: 0 0 26px var(--accent-glow);
 }
 .update-status {
   font-size: 13px;
