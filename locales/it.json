@@ -64,5 +64,10 @@
     "always_on_top": "Sempre in primo piano",
     "theme_settings": "Impostazioni Tema",
     "theme_midnight": "Mezzanotte",
-    "theme_blur": "Sfocatura"
+    "theme_blur": "Sfocatura",
+    "theme_crimson": "Cremisi",
+    "theme_emerald": "Smeraldo",
+    "theme_violet": "Viola",
+    "theme_nord": "Nord",
+    "theme_amber": "Ambra"
 }

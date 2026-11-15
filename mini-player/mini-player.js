@@ -44,7 +44,7 @@ async function applyTranslations() {
 
 async function initTheme() {
     const currentTheme = await window.electronAPI.getTheme();
-    const allowedThemes = new Set(['midnight', 'blur']);
+    const allowedThemes = new Set(['midnight', 'blur', 'crimson', 'emerald', 'violet', 'nord', 'amber']);
 
     const resolvedTheme = allowedThemes.has(currentTheme) ? currentTheme : 'midnight';
     if (resolvedTheme !== currentTheme) {

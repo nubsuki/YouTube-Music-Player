@@ -290,8 +290,8 @@ function createMiniPlayerSettingsWindow() {
         : undefined;
 
   miniPlayerSettingsWindow = new BrowserWindow({
-    width: 250,
-    height: 190,
+    width: 280,
+    height: 350,
     parent: parentWindow,
     modal: false,
     frame: false,

@@ -222,13 +222,20 @@ async function loadMiniPlayer() {
 
 function applyMpPreview(theme) {
   const card = document.getElementById('mp-preview-card');
-  if (theme === 'blur') {
-    card.style.background = 'rgba(255,255,255,0.1)';
-    card.style.backdropFilter = 'blur(16px)';
-  } else {
-    card.style.background = 'rgba(0,0,0,0.75)';
-    card.style.backdropFilter = 'none';
-  }
+  if (!card) return;
+  const previewThemes = {
+    blur: { background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.15)', backdropFilter: 'blur(16px)' },
+    midnight: { background: '#000000', border: '1px solid rgba(255,255,255,0.15)', backdropFilter: 'none' },
+    crimson: { background: '#0f0507', border: '1px solid rgba(255,0,51,0.35)', backdropFilter: 'none' },
+    emerald: { background: '#050f08', border: '1px solid rgba(16,185,129,0.35)', backdropFilter: 'none' },
+    violet: { background: '#0b0614', border: '1px solid rgba(192,132,252,0.35)', backdropFilter: 'none' },
+    nord: { background: '#13171f', border: '1px solid rgba(56,189,248,0.35)', backdropFilter: 'none' },
+    amber: { background: '#140e06', border: '1px solid rgba(245,158,11,0.35)', backdropFilter: 'none' },
+  };
+  const t = previewThemes[theme] || previewThemes.midnight;
+  card.style.background = t.background;
+  card.style.border = t.border;
+  card.style.backdropFilter = t.backdropFilter;
 }
 
 document.querySelectorAll('.theme-btn').forEach(btn => {

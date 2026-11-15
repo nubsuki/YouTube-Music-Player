@@ -179,6 +179,26 @@ body::before {
   background: linear-gradient(135deg, rgba(255, 255, 255, 0.2), rgba(255, 255, 255, 0.05));
 }
 
+.swatch.crimson {
+  background: #ff0033;
+}
+
+.swatch.emerald {
+  background: #10b981;
+}
+
+.swatch.violet {
+  background: #c084fc;
+}
+
+.swatch.nord {
+  background: #38bdf8;
+}
+
+.swatch.amber {
+  background: #f59e0b;
+}
+
 /* Toggle row */
 .toggle-row {
   display: flex;

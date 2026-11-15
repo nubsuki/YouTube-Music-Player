@@ -64,5 +64,10 @@
     "always_on_top": "Sempre no topo",
     "theme_settings": "Configurações de Tema",
     "theme_midnight": "Meia-noite",
-    "theme_blur": "Desfoque"
+    "theme_blur": "Desfoque",
+    "theme_crimson": "Carmesim",
+    "theme_emerald": "Esmeralda",
+    "theme_violet": "Violeta",
+    "theme_nord": "Nord",
+    "theme_amber": "Âmbar"
 }

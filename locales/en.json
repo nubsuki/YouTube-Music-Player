@@ -69,5 +69,10 @@
   "theme_blue": "Blue",
   "theme_green": "Green",
   "theme_midnight": "Midnight",
-  "theme_blur": "Blur"
+  "theme_blur": "Blur",
+  "theme_crimson": "Crimson",
+  "theme_emerald": "Emerald",
+  "theme_violet": "Violet",
+  "theme_nord": "Nord",
+  "theme_amber": "Amber"
 }
