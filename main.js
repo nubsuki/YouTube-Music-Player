@@ -263,12 +263,10 @@ ipcMain.handle("la:get-config", () => ({
 }));
 
 ipcMain.on("la:save-config", (_e, { hostName, autoHost }) => {
-  let nameChanged = false;
   if (hostName !== undefined) {
     const name = normalizeName(hostName);
     if (listenAlongHostName !== name) {
       listenAlongHostName = name;
-      nameChanged = true;
     }
   }
   if (autoHost !== undefined) {

@@ -24,13 +24,6 @@ window.addEventListener('keydown', (e) => {
   }
 });
 
-// Status helper
-function showStatus(el, msg, ok = true) {
-  el.textContent = msg;
-  el.style.color = ok ? '#22c55e' : '#ef4444';
-  setTimeout(() => { el.textContent = ''; }, 2500);
-}
-
 // App settings tab
 const startWithSystem = document.getElementById('start-with-system');
 const openLastSongEl = document.getElementById('open-last-song');

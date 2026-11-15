@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, screen } = require("electron");
+const { BrowserWindow, ipcMain, screen } = require("electron");
 const path = require("path");
 
 let miniPlayerWindow = null;
