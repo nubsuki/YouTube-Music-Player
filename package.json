@@ -1,6 +1,6 @@
 {
   "name": "youtube-music-player",
-  "version": "3.0.3",
+  "version": "3.1.0",
   "description": "YouTube Music Player",
   "main": "main.js",
   "repository": {
@@ -48,7 +48,9 @@
     "protocols": [
       {
         "name": "YouTube Music Player",
-        "schemes": ["ytmp"]
+        "schemes": [
+          "ytmp"
+        ]
       }
     ],
     "publish": {
