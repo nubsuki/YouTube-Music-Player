@@ -99,16 +99,16 @@ A fast, clean, and feature-packed desktop client for **YouTube Music**.
 ### Linux
 1. Ensure `fuse` is installed on your distribution.
 2. Download the `.AppImage` or `.deb` package from the [Releases](https://github.com/nubsuki/YouTube-Music-Player/releases) page.
-3. Make the AppImage executable (`chmod +x <file>.AppImage`) and run it, or install the `.deb` package with `sudo dpkg -i <file>.deb`.
 
-### macOS (Experimental)
-> [!NOTE]
+
+### macOS
 > macOS builds are currently experimental and not code-signed with an Apple Developer certificate.
-- Download the macOS release or build from source using `npm run build:mac`.
+ Download the macOS [Releases](https://github.com/nubsuki/YouTube-Music-Player/releases).
 - If macOS blocks the app (*"unidentified developer"* or *"app is damaged"*), right-click the app and choose **Open**, or run the following in Terminal:
   ```bash
   xattr -cr /Applications/"YouTube Music.app"
   ```
+
 
 ---
 
