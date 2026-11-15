@@ -46,6 +46,17 @@ const {
 } = require("./player/sessionRestore");
 const { hideCastButtons } = require("./player/castHider");
 const { injectAutoContinue } = require("./player/autoContinue");
+const {
+  initMiniPlayer,
+  createMiniPlayerWindow,
+  closeMiniPlayerWindow,
+  resetMiniPlayerPosition,
+  toggleMiniPlayerOnMinimize,
+  getOpenMiniPlayerOnMinimize,
+  getMiniPlayerConfig,
+  applyMiniPlayerConfig,
+  triggerQuickPoll,
+} = require("./mini-player/miniPlayerManager");
 
 let mainWindow;
 let ytView = null;
@@ -55,15 +66,10 @@ let isOptionsOpen = false;
 const TOPBAR_HEIGHT = 38;
 let tray;
 let minimizeToTray = false;
-let openMiniPlayerOnMinimize = false;
 let openLastSong = false;
 let resumePlayback = false;
 let lastUrl = "https://music.youtube.com";
-let miniPlayerWindow;
-let miniPlayerBounds = { x: undefined, y: undefined, width: 320, height: 105 };
 let mainWindowBounds = { x: undefined, y: undefined, width: 1200, height: 800 };
-let miniPlayerTheme = "blur";
-let miniPlayerAlwaysOnTop = true;
 
 // Listen Along
 let listenAlongServerUrl = DEFAULT_SERVER_URL;
@@ -144,7 +150,6 @@ async function loadConfig() {
     const config = JSON.parse(configData);
 
     minimizeToTray = config.minimizeToTray || false;
-    openMiniPlayerOnMinimize = config.openMiniPlayerOnMinimize || false;
     videoAdSkipperEnabled = !!config.videoAdSkipperEnabled;
     VideoAdSkipSpeed = config.VideoAdSkipSpeed || 2;
     openLastSong =
@@ -153,21 +158,13 @@ async function loadConfig() {
       ? config.lastUrl || "https://music.youtube.com"
       : "https://music.youtube.com";
     resumePlayback = config.resumePlayback || false;
-    miniPlayerBounds = config.miniPlayerBounds || {
-      x: undefined,
-      y: undefined,
-    };
     mainWindowBounds = config.mainWindowBounds || {
       x: undefined,
       y: undefined,
       width: 1200,
       height: 800,
     };
-    miniPlayerTheme = config.miniPlayerTheme || "blur";
-    miniPlayerAlwaysOnTop =
-      config.miniPlayerAlwaysOnTop !== undefined
-        ? !!config.miniPlayerAlwaysOnTop
-        : true;
+    applyMiniPlayerConfig(config);
 
     // Listen Along config
     listenAlongServerUrl = config.listenAlongServerUrl || DEFAULT_SERVER_URL;
@@ -175,8 +172,9 @@ async function loadConfig() {
     listenAlongAutoHost = !!config.listenAlongAutoHost;
     require("./listen-along/listenAlong").setAutoHost(listenAlongAutoHost, listenAlongHostName);
 
+    const miniConfig = getMiniPlayerConfig();
     console.log(
-      `Config loaded - Minimize to tray: ${minimizeToTray}, Video ad skipper: ${videoAdSkipperEnabled}, Video ad skip speed: ${VideoAdSkipSpeed}, Last URL: ${lastUrl}, Open last song: ${openLastSong}, Resume playback: ${resumePlayback}, Mini-player bounds: ${JSON.stringify(miniPlayerBounds)}, Main window bounds: ${JSON.stringify(mainWindowBounds)}, Mini-player theme: ${miniPlayerTheme}, Listen along auto-host: ${listenAlongAutoHost}`,
+      `Config loaded - Minimize to tray: ${minimizeToTray}, Video ad skipper: ${videoAdSkipperEnabled}, Video ad skip speed: ${VideoAdSkipSpeed}, Last URL: ${lastUrl}, Open last song: ${openLastSong}, Resume playback: ${resumePlayback}, Mini-player bounds: ${JSON.stringify(miniConfig.miniPlayerBounds)}, Main window bounds: ${JSON.stringify(mainWindowBounds)}, Mini-player theme: ${miniConfig.miniPlayerTheme}, Listen along auto-host: ${listenAlongAutoHost}`,
     );
     return config;
   } catch (error) {
@@ -187,18 +185,19 @@ async function loadConfig() {
 
 async function saveConfig() {
   try {
+    const miniConfig = getMiniPlayerConfig();
     const config = {
       minimizeToTray: minimizeToTray,
-      openMiniPlayerOnMinimize: openMiniPlayerOnMinimize,
+      openMiniPlayerOnMinimize: miniConfig.openMiniPlayerOnMinimize,
       videoAdSkipperEnabled: videoAdSkipperEnabled,
       VideoAdSkipSpeed: VideoAdSkipSpeed,
       lastUrl: lastUrl,
       openLastSong: openLastSong,
       resumePlayback: resumePlayback,
-      miniPlayerBounds: miniPlayerBounds,
+      miniPlayerBounds: miniConfig.miniPlayerBounds,
       mainWindowBounds: mainWindowBounds,
-      miniPlayerTheme: miniPlayerTheme,
-      miniPlayerAlwaysOnTop: miniPlayerAlwaysOnTop,
+      miniPlayerTheme: miniConfig.miniPlayerTheme,
+      miniPlayerAlwaysOnTop: miniConfig.miniPlayerAlwaysOnTop,
       listenAlongServerUrl: listenAlongServerUrl,
       listenAlongHostName: listenAlongHostName,
       listenAlongAutoHost: listenAlongAutoHost,
@@ -433,184 +432,10 @@ ipcMain.on("topbar:refresh", () => {
   reloadPlayerView();
 });
 
-function createMiniPlayerWindow() {
-  if (miniPlayerWindow) {
-    miniPlayerWindow.focus();
-    return;
-  }
-
-  const defaultMiniBounds = {
-    x: undefined,
-    y: undefined,
-    width: 320,
-    height: 105,
-  };
-  const bounds = ensureWindowIsVisible(miniPlayerBounds, defaultMiniBounds);
-
-  miniPlayerWindow = new BrowserWindow({
-    width: bounds.width || 320,
-    height: bounds.height || 105,
-    x: bounds.x,
-    y: bounds.y,
-    parent: mainWindow.isVisible() ? mainWindow : null,
-    frame: false,
-    resizable: false,
-    movable: true,
-    alwaysOnTop: miniPlayerAlwaysOnTop,
-    show: false,
-    minimizable: false,
-    maximizable: false,
-    skipTaskbar: true,
-    webPreferences: {
-      preload: path.join(__dirname, "mini-player/preload-mini-player.js"),
-      nodeIntegration: false,
-      contextIsolation: true,
-    },
-    icon: iconPath,
-  });
-
-  miniPlayerWindow.loadFile(
-    path.join(__dirname, "mini-player/mini-player.html"),
-  );
-
-  miniPlayerWindow.once("ready-to-show", () => {
-    miniPlayerWindow.show();
-  });
-
-  // Enable F12 and Ctrl+Shift+i for DevTools
-  miniPlayerWindow.webContents.on("before-input-event", (event, input) => {
-    if (
-      input.key === "F12" ||
-      (input.control && input.shift && input.key.toLowerCase() === "i")
-    ) {
-      miniPlayerWindow.webContents.openDevTools({ mode: "detach" });
-      event.preventDefault();
-    }
-  });
-
-  let saveMiniBoundsTimer = null;
-  const saveMiniPlayerPosition = () => {
-    if (miniPlayerWindow && !miniPlayerWindow.isDestroyed()) {
-      const bounds = miniPlayerWindow.getBounds();
-      // Keep width and height out of the saved config to avoid growth on Windows DPI scaling
-      miniPlayerBounds = { x: bounds.x, y: bounds.y };
-      if (saveMiniBoundsTimer) clearTimeout(saveMiniBoundsTimer);
-      saveMiniBoundsTimer = setTimeout(() => {
-        saveConfig();
-      }, 500);
-    }
-  };
-
-  miniPlayerWindow.on("moved", saveMiniPlayerPosition);
-  miniPlayerWindow.on("hide", saveMiniPlayerPosition);
-  miniPlayerWindow.on("close", saveMiniPlayerPosition);
-  miniPlayerWindow.on("closed", () => {
-    if (miniPlayerStateInterval) {
-      clearInterval(miniPlayerStateInterval);
-      miniPlayerStateInterval = null;
-    }
-    miniPlayerWindow = null;
-
-    // Show main window when mini player is closed (unless app is quitting)
-    if (!app.isQuiting && mainWindow && !mainWindow.isDestroyed()) {
-      mainWindow.show();
-      mainWindow.focus();
-    }
-  });
-
-  // Start polling state when mini player is opened
-  startMiniPlayerStatePolling();
-}
-
 function getPlayerWebContents() {
   if (ytView && !ytView.webContents.isDestroyed()) return ytView.webContents;
   if (mainWindow && !mainWindow.webContents.isDestroyed()) return mainWindow.webContents;
   return null;
-}
-
-let miniPlayerStateInterval;
-let miniPlayerStatePollingInFlight = false;
-function startMiniPlayerStatePolling() {
-  if (miniPlayerStateInterval) clearInterval(miniPlayerStateInterval);
-
-  miniPlayerStateInterval = setInterval(async () => {
-    if (
-      miniPlayerStatePollingInFlight ||
-      !miniPlayerWindow ||
-      miniPlayerWindow.isDestroyed() ||
-      !mainWindow ||
-      mainWindow.isDestroyed()
-    )
-      return;
-
-    miniPlayerStatePollingInFlight = true;
-    try {
-      const player = getPlayerWebContents();
-      if (!player) return;
-      const state = await player.executeJavaScript(`
-        (() => {
-          const playPauseBtn = document.querySelector("#play-pause-button");
-          const likeBtn = document.querySelector("#button-shape-like > button");
-          const dislikeBtn = document.querySelector("#button-shape-dislike > button");
-          const timeInfo = document.querySelector(".time-info");
-          const title = document.querySelector(".middle-controls .title");
-          const byline = document.querySelector(".middle-controls .byline");
-
-          const thumbnailImg =
-            document.querySelector("ytmusic-player-bar img#thumbnail") ||
-            document.querySelector("ytmusic-player-bar img") ||
-            document.querySelector("#player-bar img") ||
-            document.querySelector("img#thumbnail") ||
-            document.querySelector(".thumbnail img");
-
-          const getImgSrc = (img) => {
-            if (!img) return "";
-            return img.currentSrc || img.src || img.getAttribute("src") || "";
-          };
-
-          const thumbnailSrc = getImgSrc(thumbnailImg);
-
-          const progress = document.querySelector("#progress-bar");
-          const buffering = document.querySelector("#buffering-spinner");
-          
-          const getIconLabel = (btn) => {
-            if (!btn) return "";
-            return (btn.getAttribute('aria-label') || btn.title || "").toLowerCase();
-          };
-
-          const label = getIconLabel(playPauseBtn);
-          // "Pausar" (ES), "Pause" (EN), "Pausa" (IT/PT)
-          const isPlaying = label.includes("paus");
-
-          return {
-            isPlaying: isPlaying,
-            isLiked: likeBtn ? likeBtn.getAttribute('aria-pressed') === 'true' : false,
-            isDisliked: dislikeBtn ? dislikeBtn.getAttribute('aria-pressed') === 'true' : false,
-            timeInfo: timeInfo ? timeInfo.innerText.trim() : "",
-            title: title ? title.innerText.trim() : "",
-            artist: byline ? byline.innerText.trim() : "",
-            thumbnail: thumbnailSrc,
-            isBuffering: buffering ? !buffering.hidden : false,
-            progress: progress ? progress.value : 0,
-            progressMax: progress ? progress.max : 100
-          };
-        })()
-      `);
-
-      if (
-        miniPlayerWindow &&
-        !miniPlayerWindow.isDestroyed() &&
-        miniPlayerWindow.webContents &&
-        !miniPlayerWindow.webContents.isDestroyed()
-      ) {
-        miniPlayerWindow.webContents.send("state-update", state);
-      }
-    } catch (e) {
-      console.error("Error polling player state:", e);
-    } finally {
-      miniPlayerStatePollingInFlight = false;
-    }
-  }, 1000);
 }
 
 ipcMain.handle("get-filters", async () => {
@@ -770,7 +595,7 @@ ipcMain.handle("options:get-app-settings", () => {
     openLastSong,
     resumePlayback,
     minimizeToTray,
-    openMiniPlayerOnMinimize,
+    openMiniPlayerOnMinimize: getOpenMiniPlayerOnMinimize(),
   };
 });
 
@@ -800,117 +625,7 @@ ipcMain.on("options:close", () => {
   hideOptionsView();
 });
 
-let miniPlayerSettingsWindow;
-function createMiniPlayerSettingsWindow() {
-  if (miniPlayerSettingsWindow) {
-    miniPlayerSettingsWindow.focus();
-    return;
-  }
-
-  const parentWindow =
-    miniPlayerWindow && !miniPlayerWindow.isDestroyed()
-      ? miniPlayerWindow
-      : mainWindow && !mainWindow.isDestroyed()
-        ? mainWindow
-        : undefined;
-
-  miniPlayerSettingsWindow = new BrowserWindow({
-    width: 250,
-    height: 190,
-    parent: parentWindow,
-    modal: false,
-    frame: false,
-    resizable: false,
-    show: false,
-    title: t("mini_player_settings"),
-    webPreferences: {
-      preload: path.join(__dirname, "mini-player/preload-mini-player.js"),
-      nodeIntegration: false,
-      contextIsolation: true,
-    },
-    icon: iconPath,
-  });
-
-  miniPlayerSettingsWindow.setMenu(null);
-  miniPlayerSettingsWindow.loadFile(
-    path.join(__dirname, "mini-player/settings.html"),
-  );
-
-  miniPlayerSettingsWindow.once("ready-to-show", () => {
-    miniPlayerSettingsWindow.show();
-  });
-
-  miniPlayerSettingsWindow.on("closed", () => {
-    miniPlayerSettingsWindow = null;
-    if (miniPlayerWindow && !miniPlayerWindow.isDestroyed()) {
-      miniPlayerWindow.focus();
-    } else if (mainWindow && !mainWindow.isDestroyed()) {
-      mainWindow.focus();
-    }
-  });
-}
-
-ipcMain.on("mini-player-drag-start", (event) => {
-  const win = BrowserWindow.fromWebContents(event.sender);
-  if (!win || win.isDestroyed()) return;
-  const cursor = screen.getCursorScreenPoint();
-  const [winX, winY] = win.getPosition();
-  win._dragOffset = { x: cursor.x - winX, y: cursor.y - winY };
-});
-
-ipcMain.on("mini-player-drag-move", (event) => {
-  const win = BrowserWindow.fromWebContents(event.sender);
-  if (!win || win.isDestroyed() || !win._dragOffset) return;
-  const cursor = screen.getCursorScreenPoint();
-  win.setPosition(
-    Math.round(cursor.x - win._dragOffset.x),
-    Math.round(cursor.y - win._dragOffset.y),
-  );
-});
-
-ipcMain.on("mini-player-drag-end", (event) => {
-  const win = BrowserWindow.fromWebContents(event.sender);
-  if (!win || win.isDestroyed()) return;
-  win._dragOffset = null;
-});
-
-ipcMain.on("open-mini-player-settings", () => {
-  createMiniPlayerSettingsWindow();
-});
-
-ipcMain.on("close-mini-player-settings", () => {
-  if (miniPlayerSettingsWindow && !miniPlayerSettingsWindow.isDestroyed()) {
-    miniPlayerSettingsWindow.close();
-  }
-});
-
-ipcMain.handle("get-mini-player-theme", () => {
-  return miniPlayerTheme;
-});
-
-ipcMain.on("set-mini-player-theme", (event, theme) => {
-  miniPlayerTheme = theme;
-  saveConfig();
-  console.log(`Mini player theme updated to: ${theme}`);
-
-  // Notify all windows of theme change
-  if (miniPlayerWindow && !miniPlayerWindow.isDestroyed()) {
-    miniPlayerWindow.webContents.send("theme-changed", theme);
-  }
-});
-
-ipcMain.handle("get-mini-player-always-on-top", () => {
-  return miniPlayerAlwaysOnTop;
-});
-
-ipcMain.on("set-mini-player-always-on-top", (event, enabled) => {
-  miniPlayerAlwaysOnTop = !!enabled;
-  saveConfig();
-
-  if (miniPlayerWindow && !miniPlayerWindow.isDestroyed()) {
-    miniPlayerWindow.setAlwaysOnTop(miniPlayerAlwaysOnTop);
-  }
-});
+let lastRatingControlTime = 0;
 
 ipcMain.on("player-control", (event, data) => {
   if (!mainWindow) return;
@@ -931,14 +646,22 @@ ipcMain.on("player-control", (event, data) => {
       script =
         '{ const btn = document.querySelector(".next-button"); if (btn) btn.click(); }';
       break;
-    case "like":
+    case "like": {
+      const now = Date.now();
+      if (now - lastRatingControlTime < 350) return;
+      lastRatingControlTime = now;
       script =
-        '{ const btn = document.querySelector("#button-shape-like > button"); if (btn) btn.click(); }';
+        '{ const btn = document.querySelector("#button-shape-like > button") || document.querySelector("ytmusic-like-button-renderer #button-shape-like > button"); if (btn) btn.click(); }';
       break;
-    case "dislike":
+    }
+    case "dislike": {
+      const now = Date.now();
+      if (now - lastRatingControlTime < 350) return;
+      lastRatingControlTime = now;
       script =
-        '{ const btn = document.querySelector("#button-shape-dislike > button"); if (btn) btn.click(); }';
+        '{ const btn = document.querySelector("#button-shape-dislike > button") || document.querySelector("ytmusic-like-button-renderer #button-shape-dislike > button"); if (btn) btn.click(); }';
       break;
+    }
     case "seek":
       if (typeof data.value !== "undefined") {
         const rawValue = data.value;
@@ -957,9 +680,7 @@ ipcMain.on("player-control", (event, data) => {
       }
       break;
     case "maximize":
-      if (miniPlayerWindow) {
-        miniPlayerWindow.close();
-      }
+      closeMiniPlayerWindow();
       if (mainWindow) {
         mainWindow.show();
         mainWindow.focus();
@@ -972,6 +693,7 @@ ipcMain.on("player-control", (event, data) => {
     player.executeJavaScript(script).catch((e) => {
       console.error("Error executing player control script:", e);
     });
+    triggerQuickPoll(300);
   }
 });
 
@@ -984,9 +706,7 @@ function createTray() {
     {
       label: t("show"),
       click: () => {
-        if (miniPlayerWindow) {
-          miniPlayerWindow.close();
-        }
+        closeMiniPlayerWindow();
         mainWindow.show();
         mainWindow.focus();
       },
@@ -1000,16 +720,12 @@ function createTray() {
           width: 1200,
           height: 800,
         };
-        miniPlayerBounds = { x: undefined, y: undefined };
+        resetMiniPlayerPosition();
         saveConfig();
 
         if (mainWindow && !mainWindow.isDestroyed()) {
           mainWindow.setSize(1200, 800);
           mainWindow.center();
-        }
-
-        if (miniPlayerWindow && !miniPlayerWindow.isDestroyed()) {
-          miniPlayerWindow.center();
         }
       },
     },
@@ -1030,14 +746,12 @@ function createTray() {
     if (mainWindow.isVisible()) {
       mainWindow.hide();
       // Show the mini player if the option is enabled
-      if (openMiniPlayerOnMinimize) {
+      if (getOpenMiniPlayerOnMinimize()) {
         createMiniPlayerWindow();
       }
     } else {
       // Close the mini player when showing the main window
-      if (miniPlayerWindow) {
-        miniPlayerWindow.close();
-      }
+      closeMiniPlayerWindow();
       mainWindow.show();
       mainWindow.focus();
     }
@@ -1093,14 +807,6 @@ function toggleResumeBehavior(enabled) {
   createMenu();
   console.log(`Resume playback: ${enabled ? "Enabled" : "Disabled"}`);
 }
-function toggleMiniPlayerOnMinimize(enabled) {
-  openMiniPlayerOnMinimize = enabled;
-  saveConfig();
-  createMenu();
-  console.log(
-    `Open mini player on minimize: ${enabled ? "Enabled" : "Disabled"}`,
-  );
-}
 
 // Load all filters in parallel
 
@@ -1134,6 +840,16 @@ function createMenu() {
 
 async function createWindow() {
   await loadConfig();
+
+  initMiniPlayer({
+    getMainWindow: () => mainWindow,
+    getPlayerWebContents: () => getPlayerWebContents(),
+    iconPath,
+    saveConfig: () => saveConfig(),
+    createMenu: () => createMenu(),
+    t,
+    isQuitting: () => app.isQuiting,
+  });
 
   // Get system locale and load language
   const userLocale = app.getLocale().split("-")[0];
@@ -1264,7 +980,7 @@ async function createWindow() {
       mainWindow.hide();
       console.log("App minimized to tray");
 
-      if (openMiniPlayerOnMinimize) {
+      if (getOpenMiniPlayerOnMinimize()) {
         createMiniPlayerWindow();
       }
 
@@ -1416,9 +1132,7 @@ if (gotTheLock) {
   app.whenReady().then(createWindow);
 
   app.on("window-all-closed", () => {
-    if (miniPlayerWindow && !miniPlayerWindow.isDestroyed()) {
-      miniPlayerWindow.close();
-    }
+    closeMiniPlayerWindow();
     if (!minimizeToTray) {
       if (process.platform !== "darwin") {
         app.quit();
@@ -1430,9 +1144,7 @@ if (gotTheLock) {
     if (BrowserWindow.getAllWindows().length === 0) {
       createWindow();
     } else {
-      if (miniPlayerWindow && !miniPlayerWindow.isDestroyed()) {
-        miniPlayerWindow.close();
-      }
+      closeMiniPlayerWindow();
       mainWindow.show();
       mainWindow.focus();
     }

@@ -56,18 +56,54 @@ async function initTheme() {
 
 // Variable to simulate play/pause state
 let isPlaying = false;
+let lastRatingActionTime = 0;
+const RATING_COOLDOWN_MS = 400;
 
 // Send an action to the main process (main.js)
 function sendAction(action) {
     window.electronAPI.sendControl(action);
 }
 
+function handleLikeClick() {
+    const now = Date.now();
+    if (now - lastRatingActionTime < RATING_COOLDOWN_MS) return;
+    lastRatingActionTime = now;
+
+    const isCurrentlyLiked = !likeBtn.classList.contains('disabled');
+    likeBtn.classList.toggle('disabled', isCurrentlyLiked);
+    if (!isCurrentlyLiked) {
+        dislikeBtn.classList.add('disabled');
+    }
+
+    sendAction('like');
+}
+
+function handleDislikeClick() {
+    const now = Date.now();
+    if (now - lastRatingActionTime < RATING_COOLDOWN_MS) return;
+    lastRatingActionTime = now;
+
+    const isCurrentlyDisliked = !dislikeBtn.classList.contains('disabled');
+    dislikeBtn.classList.toggle('disabled', isCurrentlyDisliked);
+    if (!isCurrentlyDisliked) {
+        likeBtn.classList.add('disabled');
+    }
+
+    sendAction('dislike');
+}
+
 // Event listeners
-prevBtn.addEventListener('click', () => sendAction('previous'));
+prevBtn.addEventListener('click', () => {
+    lastRatingActionTime = 0;
+    sendAction('previous');
+});
 playPauseBtn.addEventListener('click', () => sendAction('play-pause'));
-nextBtn.addEventListener('click', () => sendAction('next'));
-likeBtn.addEventListener('click', () => sendAction('like'));
-dislikeBtn.addEventListener('click', () => sendAction('dislike'));
+nextBtn.addEventListener('click', () => {
+    lastRatingActionTime = 0;
+    sendAction('next');
+});
+likeBtn.addEventListener('click', handleLikeClick);
+dislikeBtn.addEventListener('click', handleDislikeClick);
 maximizeBtn.addEventListener('click', () => sendAction('maximize'));
 
 // Hold the move button and drag to reposition the window
