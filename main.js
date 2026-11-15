@@ -514,6 +514,7 @@ ipcMain.handle("get-about-info", () => {
     appName: t("app_name"),
     appVersion: APP_VERSION,
     appDescription: t("about_app_description"),
+    disclaimer: t("about_disclaimer"),
     githubUrl: "https://github.com/nubsuki/YouTube-Music-Player",
     translations: {
       accept: t("accept"),

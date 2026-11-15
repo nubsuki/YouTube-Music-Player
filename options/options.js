@@ -495,6 +495,8 @@ async function loadAbout() {
   document.getElementById('about-name').textContent = info.appName;
   document.getElementById('about-desc').textContent = info.appDescription;
   document.getElementById('about-version').textContent = info.translations.version;
+  const disclaimerEl = document.getElementById('about-disclaimer');
+  if (disclaimerEl && info.disclaimer) disclaimerEl.textContent = info.disclaimer;
   const gh = document.getElementById('about-github');
   gh.addEventListener('click', e => { e.preventDefault(); api.openExternal(info.githubUrl); });
 }

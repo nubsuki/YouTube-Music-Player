@@ -23,6 +23,7 @@
   "about": "About",
   "about_app": "About YouTube Music Player",
   "about_app_description": "A simple desktop application for YouTube Music with Filtering capabilities.",
+  "about_disclaimer": "This is an independent open-source project and is not affiliated with, endorsed by, or sponsored by YouTube, Google LLC, or Alphabet Inc.",
   "accept": "Accept & Close",
   "version_label": "Version {0}",
   "github_link_text": "Project on GitHub",

@@ -87,6 +87,12 @@ This helps avoid conflicts or unexpected behavior from older versions.
 
 ---
 
+## Disclaimer
+
+This is an independent open-source project and is not affiliated with, endorsed by, or sponsored by YouTube, Google LLC, or Alphabet Inc. "YouTube" and the YouTube logo are registered trademarks of Google LLC.
+
+---
+
 ## License
 
 - This software is provided "as-is" without any warranties or guarantees.
