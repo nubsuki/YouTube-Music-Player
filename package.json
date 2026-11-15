@@ -1,11 +1,11 @@
 {
-  "name": "youtube-music-player",
+  "name": "aurplayer",
   "version": "3.1.0",
-  "description": "YouTube Music Player",
+  "description": "AurPlayer - Desktop player for YouTube Music",
   "main": "main.js",
   "repository": {
     "type": "git",
-    "url": "https://github.com/nubsuki/YouTube-Music-Player"
+    "url": "https://github.com/nubsuki/AurPlayer"
   },
   "scripts": {
     "start": "electron .",
@@ -15,6 +15,8 @@
     "build:mac": "electron-builder --mac"
   },
   "keywords": [
+    "aur",
+    "aurplayer",
     "youtube",
     "music",
     "player",
@@ -36,8 +38,8 @@
     "electron-builder": "^26.15.3"
   },
   "build": {
-    "appId": "com.nubsuki.youtubemusic",
-    "productName": "YouTube Music",
+    "appId": "com.nubsuki.aurplayer",
+    "productName": "AurPlayer",
     "directories": {
       "output": "dist"
     },
@@ -47,8 +49,9 @@
     ],
     "protocols": [
       {
-        "name": "YouTube Music Player",
+        "name": "AurPlayer",
         "schemes": [
+          "aurplayer",
           "ytmp"
         ]
       }
@@ -56,7 +59,7 @@
     "publish": {
       "provider": "github",
       "owner": "nubsuki",
-      "repo": "YouTube-Music-Player"
+      "repo": "AurPlayer"
     },
     "win": {
       "target": "nsis",
@@ -66,8 +69,8 @@
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
-      "shortcutName": "YouTube Music",
-      "artifactName": "YouTube-Music-Setup-${version}.${ext}"
+      "shortcutName": "AurPlayer",
+      "artifactName": "AurPlayer-Setup-${version}.${ext}"
     },
     "linux": {
       "maintainer": "nubsuki <nubsuki@proton.me>",
@@ -77,13 +80,13 @@
       ],
       "icon": "assets/icon.png",
       "category": "Audio",
-      "artifactName": "YouTube-Music-${version}-${arch}.${ext}"
+      "artifactName": "AurPlayer-${version}-${arch}.${ext}"
     },
     "mac": {
       "target": "dmg",
       "icon": "assets/icon.png",
       "category": "public.app-category.music",
-      "artifactName": "YouTube-Music-${version}-${arch}.${ext}"
+      "artifactName": "AurPlayer-${version}-${arch}.${ext}"
     }
   },
   "dependencies": {

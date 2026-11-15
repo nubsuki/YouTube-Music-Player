@@ -48,12 +48,12 @@ function teardownClient() {
   if (old) {
     try {
       if (typeof old.user?.clearActivity === "function") {
-        Promise.resolve(old.user.clearActivity()).catch(() => {});
+        Promise.resolve(old.user.clearActivity()).catch(() => { });
       }
       old.removeAllListeners();
-      old.on("error", () => {});
-      Promise.resolve(old.destroy()).catch(() => {});
-    } catch {}
+      old.on("error", () => { });
+      Promise.resolve(old.destroy()).catch(() => { });
+    } catch { }
   }
 }
 
@@ -112,13 +112,13 @@ function setDiscordActivity(
   } else {
     buttons.push({
       label: "Get App",
-      url: "https://github.com/nubsuki/YouTube-Music-Player",
+      url: "https://github.com/nubsuki/AurPlayer",
     });
   }
 
   const activity = {
     type: 2, // Listening to
-    largeImageText: "YouTube Music",
+    largeImageText: "AurPlayer",
     instance: false,
     buttons,
   };
@@ -145,7 +145,7 @@ function setDiscordActivity(
       albumArtUrl.length <= 256;
     activity.largeImageKey = validArt ? albumArtUrl : "icon";
   } else {
-    activity.details = "YouTube Music by nubsuki";
+    activity.details = "AurPlayer by nubsuki";
     activity.largeImageKey = "icon";
   }
 

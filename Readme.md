@@ -1,20 +1,20 @@
-# YouTube Music Desktop App
+# AurPlayer
 
 <div align="center">
 
 A fast, clean, and feature-packed desktop client for **YouTube Music**.
 
-[![Downloads](https://img.shields.io/github/downloads/nubsuki/YouTube-Music-Player/total?style=for-the-badge&logo=github&logoColor=white&color=238636)](https://github.com/nubsuki/YouTube-Music-Player/releases)
-[![Release](https://img.shields.io/github/v/release/nubsuki/YouTube-Music-Player?style=for-the-badge&logo=github&logoColor=white&color=238636)](https://github.com/nubsuki/YouTube-Music-Player/releases)
-[![Windows Available](https://img.shields.io/badge/Windows-Available-238636?style=for-the-badge&logo=windows&logoColor=white)](https://github.com/nubsuki/YouTube-Music-Player/releases)
-[![Linux Available](https://img.shields.io/badge/Linux-Available-238636?style=for-the-badge&logo=linux&logoColor=white)](https://github.com/nubsuki/YouTube-Music-Player/releases)
-[![License](https://img.shields.io/github/license/nubsuki/YouTube-Music-Player?style=for-the-badge&logo=apache&logoColor=white&color=238636)](LICENSE)
-[![Stars](https://img.shields.io/github/stars/nubsuki/YouTube-Music-Player?style=for-the-badge&logo=github&logoColor=white&color=238636)](https://github.com/nubsuki/YouTube-Music-Player)
+[![Downloads](https://img.shields.io/github/downloads/nubsuki/AurPlayer/total?style=for-the-badge&logo=github&logoColor=white&color=238636)](https://github.com/nubsuki/AurPlayer/releases)
+[![Release](https://img.shields.io/github/v/release/nubsuki/AurPlayer?style=for-the-badge&logo=github&logoColor=white&color=238636)](https://github.com/nubsuki/AurPlayer/releases)
+[![Windows Available](https://img.shields.io/badge/Windows-Available-238636?style=for-the-badge&logo=windows&logoColor=white)](https://github.com/nubsuki/AurPlayer/releases)
+[![Linux Available](https://img.shields.io/badge/Linux-Available-238636?style=for-the-badge&logo=linux&logoColor=white)](https://github.com/nubsuki/AurPlayer/releases)
+[![License](https://img.shields.io/github/license/nubsuki/AurPlayer?style=for-the-badge&logo=apache&logoColor=white&color=238636)](LICENSE)
+[![Stars](https://img.shields.io/github/stars/nubsuki/AurPlayer?style=for-the-badge&logo=github&logoColor=white&color=238636)](https://github.com/nubsuki/AurPlayer)
 [![BuyMeACoffee](https://img.shields.io/badge/Buy%20Me%20a%20Coffee-Donate-FFDD00?style=for-the-badge&logo=buymeacoffee&logoColor=black)](https://buymeacoffee.com/nubsuki)
 
 <br/>
 
-<img src="assets/main_UI_N15.png" alt="YouTube Music Desktop App" width="850" />
+<img src="assets/main_UI_N15.png" alt="AurPlayer Desktop App" width="850" />
 
 </div>
 
@@ -80,7 +80,7 @@ A fast, clean, and feature-packed desktop client for **YouTube Music**.
 
 <div align="center">
 
-<img src="assets/listen along.png" alt="YouTube Music Desktop App" width="850" />
+<img src="assets/listen along.png" alt="AurPlayer Desktop App" width="850" />
 
 | Hosting Room | Discord Presence |
 | :---: | :---: |
@@ -93,20 +93,20 @@ A fast, clean, and feature-packed desktop client for **YouTube Music**.
 ## Get Started
 
 ### Windows
-1. Visit the [Releases](https://github.com/nubsuki/YouTube-Music-Player/releases) page and download `YouTube Music Setup.exe`.
+1. Visit the [Releases](https://github.com/nubsuki/AurPlayer/releases) page and download `AurPlayer-Setup.exe`.
 2. Run the installer and launch the app from your Start Menu or Desktop.
 
 ### Linux
 1. Ensure `fuse` is installed on your distribution.
-2. Download the `.AppImage` or `.deb` package from the [Releases](https://github.com/nubsuki/YouTube-Music-Player/releases) page.
+2. Download the `.AppImage` or `.deb` package from the [Releases](https://github.com/nubsuki/AurPlayer/releases) page.
 
 
 ### macOS
 > macOS builds are currently experimental and not code-signed with an Apple Developer certificate.
- Download the macOS [Releases](https://github.com/nubsuki/YouTube-Music-Player/releases).
+ Download the macOS [Releases](https://github.com/nubsuki/AurPlayer/releases).
 - If macOS blocks the app (*"unidentified developer"* or *"app is damaged"*), right-click the app and choose **Open**, or run the following in Terminal:
   ```bash
-  xattr -cr /Applications/"YouTube Music.app"
+  xattr -cr /Applications/"AurPlayer.app"
   ```
 
 
@@ -119,7 +119,7 @@ Use a **burner account/email** or stick with **v1.4.0** that version doesn't inc
 
 > **Upgrading from v1.4.0 or v1.5.0**:
 > If upgrading from an older version, delete your legacy configuration folder to avoid compatibility issues:
-> `%appdata% > Roaming > youtube-music-player`
+> `%appdata% > Roaming > AurPlayer` (or legacy `youtube-music-player`)
 
 ---
 
