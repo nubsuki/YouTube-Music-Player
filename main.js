@@ -30,7 +30,6 @@ const { injectVideoAdSkipper } = require("./adblock/videoAdSkipper");
 const {
   initDiscordRpc,
   setDiscordRpcEnabled,
-  isDiscordRpcEnabled,
 } = require("./integrations/discordRpc");
 const {
   initListenAlong,
@@ -40,6 +39,7 @@ const {
   leaveParty,
   getListenAlongState,
   DEFAULT_SERVER_URL,
+  normalizeName,
 } = require("./listen-along/listenAlong");
 
 const {
@@ -174,7 +174,7 @@ async function loadConfig() {
 
     // Listen Along config
     listenAlongServerUrl = config.listenAlongServerUrl || DEFAULT_SERVER_URL;
-    listenAlongHostName = config.listenAlongHostName || "";
+    listenAlongHostName = normalizeName(config.listenAlongHostName);
     listenAlongAutoHost = !!config.listenAlongAutoHost;
     require("./listen-along/listenAlong").setAutoHost(listenAlongAutoHost, listenAlongHostName);
 
@@ -223,7 +223,7 @@ async function saveConfig() {
 
 // Listen Along IPC handlers
 ipcMain.handle("la:create-party", async (_e, { hostName }) => {
-  const name = (hostName || listenAlongHostName || "").trim();
+  const name = normalizeName(hostName || listenAlongHostName);
   if (name.length < 3) {
     throw new Error("Display name must be at least 3 characters.");
   }
@@ -235,7 +235,7 @@ ipcMain.handle("la:create-party", async (_e, { hostName }) => {
 });
 
 ipcMain.handle("la:join-party", async (_e, { partyId, guestName }) => {
-  const name = (guestName || listenAlongHostName || "").trim();
+  const name = normalizeName(guestName || listenAlongHostName);
   if (name.length < 3) {
     throw new Error("Display name must be at least 3 characters.");
   }
@@ -265,7 +265,7 @@ ipcMain.handle("la:get-config", () => ({
 ipcMain.on("la:save-config", (_e, { hostName, autoHost }) => {
   let nameChanged = false;
   if (hostName !== undefined) {
-    const name = (hostName || "").trim();
+    const name = normalizeName(hostName);
     if (listenAlongHostName !== name) {
       listenAlongHostName = name;
       nameChanged = true;

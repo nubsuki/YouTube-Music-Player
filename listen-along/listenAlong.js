@@ -2,6 +2,26 @@ const { io } = require("socket.io-client");
 const { Notification } = require("electron");
 
 const DEFAULT_SERVER_URL = "https://ytms.nubsuki.xyz";
+const CREATE_PARTY_ENDPOINT = "https://ytms.nubsuki.xyz/api/party/create";
+
+function normalizeName(raw) {
+  if (typeof raw !== "string") return "";
+  const trimmed = raw.trim();
+  if (!/^[a-zA-Z0-9 _-]{3,24}$/.test(trimmed)) return "";
+  let out = "";
+  for (let i = 0; i < trimmed.length && i < 24; i++) {
+    const c = trimmed.charCodeAt(i);
+    if (
+      (c >= 65 && c <= 90) ||
+      (c >= 97 && c <= 122) ||
+      (c >= 48 && c <= 57) ||
+      c === 32 || c === 95 || c === 45
+    ) {
+      out += String.fromCharCode(c);
+    }
+  }
+  return out;
+}
 
 let socket = null;
 let currentParty = null;
@@ -531,16 +551,11 @@ async function createParty(serverUrl, hostName) {
   if (currentParty) await resetParty();
 
   const baseUrl = DEFAULT_SERVER_URL.replace(/\/$/, "");
-  // strip control chars and cap length
-  const name =
-    String(hostName || "")
-      .replace(/[\u0000-\u001F\u007F]/g, "")
-      .trim()
-      .slice(0, 24);
-  if (name.length < 3) {
-    throw new Error("Display name must be at least 3 characters");
+  const name = normalizeName(hostName);
+  if (!name || name.length < 3) {
+    throw new Error("Display name must be between 3 and 24 valid characters (alphanumeric, space, hyphen, underscore)");
   }
-  const res = await fetch(`${baseUrl}/api/party/create`, {
+  const res = await fetch(CREATE_PARTY_ENDPOINT, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ hostName: name }),
@@ -652,13 +667,9 @@ async function joinParty(serverUrl, partyId, guestName) {
 
   const baseUrl = DEFAULT_SERVER_URL.replace(/\/$/, "");
   const partyCode = (partyId || "").trim().toUpperCase();
-  const displayName =
-    String(guestName || "")
-      .replace(/[\u0000-\u001F\u007F]/g, "")
-      .trim()
-      .slice(0, 24);
+  const displayName = normalizeName(guestName);
 
-  if (displayName.length < 3) throw new Error("Display name must be at least 3 characters");
+  if (!displayName || displayName.length < 3) throw new Error("Display name must be at least 3 characters");
   if (!partyCode) throw new Error("Party code is required");
 
   return new Promise((resolve, reject) => {
@@ -803,10 +814,10 @@ function setAutoHost(enabled, hostName) {
 }
 
 function triggerAutoHostOnStartup(hostName) {
-  const nameToUse = (hostName || autoHostName || "").trim();
-  if (hostName !== undefined && hostName.trim().length >= 3) {
+  const nameToUse = normalizeName(hostName || autoHostName);
+  if (nameToUse.length >= 3) {
     autoHostEnabled = true;
-    autoHostName = hostName.trim();
+    autoHostName = nameToUse;
   }
   if (nameToUse.length >= 3 && !currentParty && !isConnecting) {
     console.log(`[ListenAlong] Auto-hosting party for "${nameToUse}" on startup...`);
@@ -827,4 +838,5 @@ module.exports = {
   setAutoHost,
   triggerAutoHostOnStartup,
   evaluateAutoHost: triggerAutoHostOnStartup,
+  normalizeName,
 };

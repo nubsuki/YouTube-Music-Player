@@ -8,10 +8,6 @@ let reconnectTimer = null;
 let connecting = false;
 let rpcEnabled = true;
 
-function isDiscordRpcEnabled() {
-  return rpcEnabled;
-}
-
 function setDiscordRpcEnabled(enabled) {
   const next = !!enabled;
   if (rpcEnabled === next) return;
@@ -376,5 +372,4 @@ function initDiscordRpc(mainWindow, enabled = true) {
 module.exports = {
   initDiscordRpc,
   setDiscordRpcEnabled,
-  isDiscordRpcEnabled,
 };
