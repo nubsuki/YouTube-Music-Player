@@ -95,6 +95,12 @@ body {
   transform: scale(0.97);
 }
 
+#btn-quit:hover {
+  background: rgba(239, 68, 68, 0.15);
+  border-color: rgba(239, 68, 68, 0.4);
+  color: #f87171;
+}
+
 .topbar-btn.active {
   background: rgba(227, 11, 92, 0.18);
   border-color: rgba(227, 11, 92, 0.45);

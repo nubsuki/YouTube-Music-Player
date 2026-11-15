@@ -359,6 +359,14 @@ function handleCommonShortcuts(event, input) {
   } else if (input.control && input.key === ",") {
     toggleOptionsView();
     event.preventDefault();
+  } else if (input.control && input.key.toLowerCase() === "q") {
+    app.isQuiting = true;
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.close();
+    } else {
+      app.quit();
+    }
+    event.preventDefault();
   } else if (input.key === "Escape" && isOptionsOpen) {
     hideOptionsView();
     event.preventDefault();
@@ -430,6 +438,15 @@ ipcMain.on("topbar:toggle-options", () => {
 ipcMain.on("topbar:refresh", () => {
   if (isOptionsOpen) hideOptionsView();
   reloadPlayerView();
+});
+
+ipcMain.on("topbar:quit", () => {
+  app.isQuiting = true;
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.close();
+  } else {
+    app.quit();
+  }
 });
 
 function getPlayerWebContents() {
