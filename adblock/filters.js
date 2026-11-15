@@ -8,6 +8,8 @@ const fetch = (...args) => import('node-fetch').then(({ default: fetch }) => fet
 const GHOSTERY_PREBUILT_URL = 'ghostery://prebuilt/ads-and-tracking';
 
 let snfe;
+let snfeCreated = false;
+let snfeActive = false;
 let ghosteryEngine;
 let GhosteryRequest;
 let webRequestHandlerRegistered = false;
@@ -29,20 +31,25 @@ const CACHE_DURATION = 24 * 60 * 60 * 1000;
 const USER_FILTERS_FILE = path.join(app.getPath('userData'), 'user-filters.json');
 
 const defaultFilterLists = [
-  { name: 'Ghostery (prebuilt)', url: GHOSTERY_PREBUILT_URL, description: 'Ghostery prebuilt Ads + Tracking (built-in)', enabled: false },
-  { name: 'Easylist', url: 'https://raw.githubusercontent.com/uBlockOrigin/uAssets/heads/master/thirdparties/easylist/easylist.txt', description: 'EasyList (Ad blocking)', enabled: false },
-  { name: 'Ublock-filters', url: 'https://raw.githubusercontent.com/uBlockOrigin/uAssets/heads/master/filters/filters.txt', description: 'uBlock filters (Enhanced ad blocking)', enabled: false },
-  { name: 'General filters', url: 'https://raw.githubusercontent.com/uBlockOrigin/uAssets/heads/master/filters/filters-general.txt', description: 'General filters (Popular revolving adservers)', enabled: false },
-  { name: 'Ublock-Lite-filters', url: 'https://raw.githubusercontent.com/uBlockOrigin/uAssets/heads/master/filters/ubol-filters.txt', description: 'Filters optimized for uBO Lite', enabled: false },
-  { name: 'Ublock-unbreak', url: 'https://raw.githubusercontent.com/uBlockOrigin/uAssets/heads/master/filters/unbreak.txt', description: 'unbreak sites broken as a result of 3rd-party filter lists.', enabled: false },
-  { name: 'Ublock-privacy', url: 'https://raw.githubusercontent.com/uBlockOrigin/uAssets/heads/master/filters/privacy.txt', description: 'uBlock Privacy filters', enabled: false }
+  { name: 'Ghostery (prebuilt)', url: GHOSTERY_PREBUILT_URL, description: 'Ghostery prebuilt Ads + Tracking (built-in)', enabled: false, isDefault: true },
+  { name: 'Easylist', url: 'https://raw.githubusercontent.com/uBlockOrigin/uAssets/heads/master/thirdparties/easylist/easylist.txt', description: 'EasyList (Ad blocking)', enabled: false, isDefault: true },
+  { name: 'Ublock-filters', url: 'https://raw.githubusercontent.com/uBlockOrigin/uAssets/heads/master/filters/filters.txt', description: 'uBlock filters (Enhanced ad blocking)', enabled: false, isDefault: true },
+  { name: 'General filters', url: 'https://raw.githubusercontent.com/uBlockOrigin/uAssets/heads/master/filters/filters-general.txt', description: 'General filters (Popular revolving adservers)', enabled: false, isDefault: true },
+  { name: 'Ublock-Lite-filters', url: 'https://raw.githubusercontent.com/uBlockOrigin/uAssets/heads/master/filters/ubol-filters.txt', description: 'Filters optimized for uBO Lite', enabled: false, isDefault: true },
+  { name: 'Ublock-unbreak', url: 'https://raw.githubusercontent.com/uBlockOrigin/uAssets/heads/master/filters/unbreak.txt', description: 'unbreak sites broken as a result of 3rd-party filter lists.', enabled: false, isDefault: true },
+  { name: 'Ublock-privacy', url: 'https://raw.githubusercontent.com/uBlockOrigin/uAssets/heads/master/filters/privacy.txt', description: 'uBlock Privacy filters', enabled: false, isDefault: true }
 ];
 
+const DEFAULT_FILTER_URLS = new Set(defaultFilterLists.map(f => f.url));
+
 async function ensureCacheDir() {
-  try { await fs.mkdir(CACHE_DIR, { recursive: true }); } catch {}
+  try { await fs.mkdir(CACHE_DIR, { recursive: true }); } catch { }
 }
-function getCacheFilePath(filterName) { return path.join(CACHE_DIR, `${filterName}.txt`); }
-function getCacheMetaPath(filterName) { return path.join(CACHE_DIR, `${filterName}.meta.json`); }
+function filterCacheName(filterName) {
+  return String(filterName).replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 100) || 'list';
+}
+function getCacheFilePath(filterName) { return path.join(CACHE_DIR, `${filterCacheName(filterName)}.txt`); }
+function getCacheMetaPath(filterName) { return path.join(CACHE_DIR, `${filterCacheName(filterName)}.meta.json`); }
 async function isCacheValid(filterName) {
   try {
     const metaData = await fs.readFile(getCacheMetaPath(filterName), 'utf8');
@@ -58,19 +65,21 @@ async function saveToCache(filterName, content) {
     await ensureCacheDir();
     await fs.writeFile(getCacheFilePath(filterName), content, 'utf8');
     await fs.writeFile(getCacheMetaPath(filterName), JSON.stringify({ timestamp: Date.now(), filterName }), 'utf8');
-  } catch {}
+  } catch { }
 }
 
 function ensureGhosteryInFilters(filters) {
   if (!Array.isArray(filters)) return defaultFilterLists;
 
   const hasGhostery = filters.some(f => f && f.url === GHOSTERY_PREBUILT_URL);
-  if (hasGhostery) return filters;
+  const list = hasGhostery
+    ? filters
+    : [
+      { name: 'Ghostery (prebuilt)', url: GHOSTERY_PREBUILT_URL, description: 'Ghostery prebuilt Ads + Tracking (built-in)', enabled: false },
+      ...filters
+    ];
 
-  return [
-    { name: 'Ghostery (prebuilt)', url: GHOSTERY_PREBUILT_URL, description: 'Ghostery prebuilt Ads + Tracking (built-in)', enabled: false },
-    ...filters
-  ];
+  return list.map(f => (f && typeof f === 'object' ? { ...f, isDefault: DEFAULT_FILTER_URLS.has(f.url) } : f));
 }
 
 async function loadUserFilters() {
@@ -79,7 +88,7 @@ async function loadUserFilters() {
     const parsed = JSON.parse(data);
     const migrated = ensureGhosteryInFilters(parsed);
 
-    if (migrated !== parsed) {
+    if (JSON.stringify(migrated) !== JSON.stringify(parsed)) {
       await fs.writeFile(USER_FILTERS_FILE, JSON.stringify(migrated, null, 2), 'utf8');
     }
 
@@ -104,6 +113,7 @@ async function resetFilters() {
 
 async function downloadFilter(filterList) {
   try {
+    if (!/^https:\/\//i.test(String(filterList.url || ''))) return null;
     const response = await fetch(filterList.url);
     if (response.ok) {
       const content = await response.text();
@@ -122,7 +132,13 @@ async function loadFilter(filterList, forceUpdate = false) {
   return await downloadFilter(filterList);
 }
 
-async function initializeFilterEngine(forceUpdate = false) {
+let initEngineQueue = Promise.resolve();
+function initializeFilterEngine(forceUpdate = false) {
+  initEngineQueue = initEngineQueue.catch(() => {}).then(() => _doInitializeFilterEngine(forceUpdate));
+  return initEngineQueue;
+}
+
+async function _doInitializeFilterEngine(forceUpdate = false) {
   try {
     resetAdblockStats();
 
@@ -136,9 +152,11 @@ async function initializeFilterEngine(forceUpdate = false) {
         const ghostery = await import('@ghostery/adblocker-electron');
         GhosteryRequest = ghostery.Request;
         ghosteryEngine = await ghostery.FiltersEngine.fromPrebuiltAdsAndTracking(fetch);
-        snfe = undefined;
+        // Clear snfe lists (don't destroy — singleton can't be re-created)
+        if (snfe) { await snfe.useLists([]); snfeActive = false; }
         return true;
-      } catch {
+      } catch (err) {
+        console.error('Ghostery initialization failed:', err);
         ghosteryEngine = undefined;
         GhosteryRequest = undefined;
       }
@@ -149,11 +167,14 @@ async function initializeFilterEngine(forceUpdate = false) {
 
     const enabledNetLists = enabledFilterLists.filter(f => f.url !== GHOSTERY_PREBUILT_URL);
     if (enabledNetLists.length === 0) {
-      snfe = undefined;
+      if (snfe) { await snfe.useLists([]); snfeActive = false; }
       return false;
     }
 
-    snfe = await StaticNetFilteringEngine.create();
+    if (!snfeCreated) {
+      snfe = await StaticNetFilteringEngine.create();
+      snfeCreated = true;
+    }
 
     const filterPromises = enabledNetLists.map(f =>
       loadFilter(f, forceUpdate).then(content => content ? { name: f.name, raw: content } : null)
@@ -162,18 +183,21 @@ async function initializeFilterEngine(forceUpdate = false) {
     const results = await Promise.all(filterPromises);
     const validFilters = results.filter(x => x !== null);
 
-    if (validFilters.length > 0) await snfe.useLists(validFilters);
+    if (validFilters.length > 0) { await snfe.useLists(validFilters); snfeActive = true; }
+    else snfeActive = false;
     return validFilters.length > 0;
-  } catch {
+  } catch (err) {
+    console.error('Adblock engine initialization failed:', err);
     ghosteryEngine = undefined;
     GhosteryRequest = undefined;
-    snfe = undefined;
+    snfeActive = false;
+    if (snfe) { try { await snfe.useLists([]); } catch { } }
     return false;
   }
 }
 
 function setupWebRequestHandler() {
-  if (!ghosteryEngine && !snfe) return;
+  if (!ghosteryEngine && !snfeActive) return;
   if (webRequestHandlerRegistered) return;
 
   webRequestHandlerRegistered = true;
@@ -185,7 +209,7 @@ function setupWebRequestHandler() {
   };
 
   session.defaultSession.webRequest.onBeforeRequest((details, callback) => {
-    if (!ghosteryEngine && !snfe) return callback({});
+    if (!ghosteryEngine && !snfeActive) return callback({});
 
     const shouldCheck = blockableResourceTypes[details.resourceType];
     if (!shouldCheck) return callback({});
@@ -219,7 +243,7 @@ function setupWebRequestHandler() {
       return callback({});
     }
 
-    const shouldBlock = snfe.matchRequest({ originURL: details.referrer || details.url, url: details.url, type });
+    const shouldBlock = snfeActive ? snfe.matchRequest({ originURL: details.referrer || details.url, url: details.url, type }) : 0;
 
     if (shouldBlock !== 0) {
       adblockStats.blocked += 1;
@@ -242,7 +266,7 @@ async function getAdblockStats() {
   }
 
   return {
-    engineReady: !!ghosteryEngine || !!snfe,
+    engineReady: !!ghosteryEngine || snfeActive,
     enabledLists,
     checked: adblockStats.checked,
     blocked: adblockStats.blocked,

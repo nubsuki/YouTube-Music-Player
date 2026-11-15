@@ -2,6 +2,26 @@ const { io } = require("socket.io-client");
 const { Notification } = require("electron");
 
 const DEFAULT_SERVER_URL = "https://ytms.nubsuki.xyz";
+const CREATE_PARTY_ENDPOINT = "https://ytms.nubsuki.xyz/api/party/create";
+
+function normalizeName(raw) {
+  if (typeof raw !== "string") return "";
+  const trimmed = raw.trim();
+  if (!/^[a-zA-Z0-9 _-]{3,24}$/.test(trimmed)) return "";
+  let out = "";
+  for (let i = 0; i < trimmed.length && i < 24; i++) {
+    const c = trimmed.charCodeAt(i);
+    if (
+      (c >= 65 && c <= 90) ||
+      (c >= 97 && c <= 122) ||
+      (c >= 48 && c <= 57) ||
+      c === 32 || c === 95 || c === 45
+    ) {
+      out += String.fromCharCode(c);
+    }
+  }
+  return out;
+}
 
 let socket = null;
 let currentParty = null;
@@ -364,8 +384,8 @@ async function syncPlayback(state) {
   if (isNavigating) return; // Prevent script injection during navigation
   setGuestLock(true);
 
-  const safeUrl = isSafeYtMusicUrl(state.url) ? state.url : null;
-  let hostVideoId = safeUrl ? extractVideoId(safeUrl) : null;
+  const songUrl = isSafeYtMusicUrl(state.url) ? state.url : null;
+  let hostVideoId = songUrl ? extractVideoId(songUrl) : null;
   // Reject anything that isn't a real YouTube video ID
   if (hostVideoId && !/^[A-Za-z0-9_-]{11}$/.test(hostVideoId)) {
     console.warn("[ListenAlong] Ignoring invalid video ID from host");
@@ -455,9 +475,9 @@ async function syncPlayback(state) {
       return;
     }
 
-    if (!hostVideoId && safeUrl) {
+    if (!hostVideoId && songUrl) {
       console.warn(
-        `[ListenAlong] Host URL does not contain a video ID (${safeUrl}). Host must open the song player / watch view or update their app.`,
+        `[ListenAlong] Host URL does not contain a video ID (${songUrl}). Host must open the song player / watch view or update their app.`,
       );
     }
 
@@ -530,17 +550,15 @@ async function syncPlayback(state) {
 async function createParty(serverUrl, hostName) {
   if (currentParty) await resetParty();
 
-  const cleanUrl = DEFAULT_SERVER_URL.replace(/\/$/, "");
-  // strip control chars and cap length
-  const safeHostName =
-    String(hostName || "")
-      .replace(/[\u0000-\u001F\u007F]/g, "")
-      .trim()
-      .slice(0, 24) || "Host";
-  const res = await fetch(`${cleanUrl}/api/party/create`, {
+  const baseUrl = DEFAULT_SERVER_URL.replace(/\/$/, "");
+  const name = normalizeName(hostName);
+  if (!name || name.length < 3) {
+    throw new Error("Display name must be between 3 and 24 valid characters (alphanumeric, space, hyphen, underscore)");
+  }
+  const res = await fetch(CREATE_PARTY_ENDPOINT, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ hostName: safeHostName }),
+    body: JSON.stringify({ hostName: name }),
   });
 
   if (!res.ok) {
@@ -553,12 +571,12 @@ async function createParty(serverUrl, hostName) {
     role: "host",
     id: partyId,
     hostToken,
-    hostName: safeHostName,
-    serverUrl: cleanUrl,
+    hostName: name,
+    serverUrl: baseUrl,
   };
   currentMembers = [];
 
-  socket = io(cleanUrl, { transports: ["websocket", "polling"] });
+  socket = io(baseUrl, { transports: ["websocket", "polling"] });
 
   socket.on("connect", async () => {
     console.log("[ListenAlong] Socket connected, syncing clock...");
@@ -641,25 +659,24 @@ async function closeParty() {
   clockOffset = 0;
   clockSyncDone = false;
   notifyStateChange();
-
-  evaluateAutoHost();
 }
 
 // Guest party lifecycle
 async function joinParty(serverUrl, partyId, guestName) {
   if (currentParty) await resetParty();
 
-  const cleanUrl = DEFAULT_SERVER_URL.replace(/\/$/, "");
-  const cleanPartyId = (partyId || "").trim().toUpperCase();
-  const cleanName = (guestName || "Listener").trim().slice(0, 24) || "Listener";
+  const baseUrl = DEFAULT_SERVER_URL.replace(/\/$/, "");
+  const partyCode = (partyId || "").trim().toUpperCase();
+  const displayName = normalizeName(guestName);
 
-  if (!cleanPartyId) throw new Error("Party code is required");
+  if (!displayName || displayName.length < 3) throw new Error("Display name must be at least 3 characters");
+  if (!partyCode) throw new Error("Party code is required");
 
   return new Promise((resolve, reject) => {
     let settled = false;
 
     isConnecting = true;
-    socket = io(cleanUrl, {
+    socket = io(baseUrl, {
       transports: ["websocket", "polling"],
       timeout: 8000,
     });
@@ -668,11 +685,11 @@ async function joinParty(serverUrl, partyId, guestName) {
       console.log(`[ListenAlong] Socket connected, syncing clock...`);
       await syncClock(socket);
       console.log(
-        `[ListenAlong] Joining party ${cleanPartyId} as "${cleanName}"`,
+        `[ListenAlong] Joining party ${partyCode} as "${displayName}"`,
       );
       socket.emit("party:join", {
-        partyId: cleanPartyId,
-        displayName: cleanName,
+        partyId: partyCode,
+        displayName: displayName,
       });
     });
 
@@ -685,8 +702,8 @@ async function joinParty(serverUrl, partyId, guestName) {
         role: "guest",
         id: pid,
         hostName: hostName || "Friend",
-        guestName: cleanName,
-        serverUrl: cleanUrl,
+        guestName: displayName,
+        serverUrl: baseUrl,
       };
       currentMembers = members || [];
       lastSongState = state || null;
@@ -739,7 +756,6 @@ async function joinParty(serverUrl, partyId, guestName) {
           socket = null;
         }
         reject(new Error("Could not connect to sync server."));
-        evaluateAutoHost();
       }
     });
 
@@ -770,8 +786,6 @@ async function leaveParty() {
   clockOffset = 0;
   clockSyncDone = false;
   notifyStateChange();
-
-  evaluateAutoHost();
 }
 
 async function resetParty() {
@@ -797,18 +811,19 @@ function initListenAlong(mainWindow, onStateChange) {
 function setAutoHost(enabled, hostName) {
   autoHostEnabled = !!enabled;
   if (hostName !== undefined) autoHostName = hostName;
-  evaluateAutoHost();
 }
 
-function evaluateAutoHost() {
-  if (autoHostEnabled && !currentParty && !isConnecting) {
-    // default to 'Host' if name is entirely empty to prevent blank hosts
-    const nameToUse = (autoHostName || "").trim() || "Host";
-    setTimeout(() => {
-      if (autoHostEnabled && !currentParty && !isConnecting) {
-        createParty(DEFAULT_SERVER_URL, nameToUse).catch(console.error);
-      }
-    }, 500);
+function triggerAutoHostOnStartup(hostName) {
+  const nameToUse = normalizeName(hostName || autoHostName);
+  if (nameToUse.length >= 3) {
+    autoHostEnabled = true;
+    autoHostName = nameToUse;
+  }
+  if (nameToUse.length >= 3 && !currentParty && !isConnecting) {
+    console.log(`[ListenAlong] Auto-hosting party for "${nameToUse}" on startup...`);
+    return createParty(DEFAULT_SERVER_URL, nameToUse).catch((err) => {
+      console.error("[ListenAlong] Auto-host createParty failed:", err.message || err);
+    });
   }
 }
 
@@ -821,4 +836,7 @@ module.exports = {
   leaveParty,
   getListenAlongState,
   setAutoHost,
+  triggerAutoHostOnStartup,
+  evaluateAutoHost: triggerAutoHostOnStartup,
+  normalizeName,
 };

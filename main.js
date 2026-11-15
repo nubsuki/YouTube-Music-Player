@@ -2,11 +2,14 @@ require("dotenv").config({ path: require("path").join(__dirname, ".env") });
 const {
   app,
   BrowserWindow,
+  BrowserView,
   Menu,
   Tray,
   shell,
   dialog,
   screen,
+  clipboard,
+  ipcMain,
 } = require("electron");
 
 app.commandLine.appendSwitch("autoplay-policy", "no-user-gesture-required");
@@ -24,7 +27,10 @@ const {
   resetAdblockStats: resetAdblockStatsExternal,
 } = require("./adblock/filters");
 const { injectVideoAdSkipper } = require("./adblock/videoAdSkipper");
-const { initDiscordRpc } = require("./integrations/discordRpc");
+const {
+  initDiscordRpc,
+  setDiscordRpcEnabled,
+} = require("./integrations/discordRpc");
 const {
   initListenAlong,
   createParty,
@@ -33,25 +39,44 @@ const {
   leaveParty,
   getListenAlongState,
   DEFAULT_SERVER_URL,
+  normalizeName,
 } = require("./listen-along/listenAlong");
 
+const {
+  captureCurrentSongState,
+  saveLastSongSession,
+  computeStartupUrl,
+  applyStartupPlayback,
+} = require("./player/sessionRestore");
+const { hideCastButtons } = require("./player/castHider");
+const { injectAutoContinue } = require("./player/autoContinue");
+const {
+  initMiniPlayer,
+  createMiniPlayerWindow,
+  closeMiniPlayerWindow,
+  resetMiniPlayerPosition,
+  toggleMiniPlayerOnMinimize,
+  getOpenMiniPlayerOnMinimize,
+  getMiniPlayerConfig,
+  applyMiniPlayerConfig,
+  triggerQuickPoll,
+} = require("./mini-player/miniPlayerManager");
+
 let mainWindow;
-let settingsWindow;
+let ytView = null;
+let lastFailedUrl = null;
+let optionsView = null;
+let isOptionsOpen = false;
+const TOPBAR_HEIGHT = 38;
 let tray;
 let minimizeToTray = false;
-let openMiniPlayerOnMinimize = false;
 let openLastSong = false;
 let resumePlayback = false;
 let lastUrl = "https://music.youtube.com";
-let aboutWindow;
-let miniPlayerWindow;
-let miniPlayerBounds = { x: undefined, y: undefined, width: 320, height: 105 };
 let mainWindowBounds = { x: undefined, y: undefined, width: 1200, height: 800 };
-let miniPlayerTheme = "blur";
-let miniPlayerAlwaysOnTop = true;
+let discordRpcEnabled = true;
 
 // Listen Along
-let listenAlongWindow = null;
 let listenAlongServerUrl = DEFAULT_SERVER_URL;
 let listenAlongHostName = "";
 let listenAlongAutoHost = false;
@@ -130,7 +155,6 @@ async function loadConfig() {
     const config = JSON.parse(configData);
 
     minimizeToTray = config.minimizeToTray || false;
-    openMiniPlayerOnMinimize = config.openMiniPlayerOnMinimize || false;
     videoAdSkipperEnabled = !!config.videoAdSkipperEnabled;
     VideoAdSkipSpeed = config.VideoAdSkipSpeed || 2;
     openLastSong =
@@ -139,29 +163,24 @@ async function loadConfig() {
       ? config.lastUrl || "https://music.youtube.com"
       : "https://music.youtube.com";
     resumePlayback = config.resumePlayback || false;
-    miniPlayerBounds = config.miniPlayerBounds || {
-      x: undefined,
-      y: undefined,
-    };
+    discordRpcEnabled = config.discordRpcEnabled !== undefined ? !!config.discordRpcEnabled : true;
     mainWindowBounds = config.mainWindowBounds || {
       x: undefined,
       y: undefined,
       width: 1200,
       height: 800,
     };
-    miniPlayerTheme = config.miniPlayerTheme || "blur";
-    miniPlayerAlwaysOnTop =
-      config.miniPlayerAlwaysOnTop !== undefined
-        ? !!config.miniPlayerAlwaysOnTop
-        : true;
+    applyMiniPlayerConfig(config);
 
     // Listen Along config
     listenAlongServerUrl = config.listenAlongServerUrl || DEFAULT_SERVER_URL;
-    listenAlongHostName = config.listenAlongHostName || "";
+    listenAlongHostName = normalizeName(config.listenAlongHostName);
     listenAlongAutoHost = !!config.listenAlongAutoHost;
+    require("./listen-along/listenAlong").setAutoHost(listenAlongAutoHost, listenAlongHostName);
 
+    const miniConfig = getMiniPlayerConfig();
     console.log(
-      `Config loaded - Minimize to tray: ${minimizeToTray}, Video ad skipper: ${videoAdSkipperEnabled}, Video ad skip speed: ${VideoAdSkipSpeed}, Last URL: ${lastUrl}, Open last song: ${openLastSong}, Resume playback: ${resumePlayback}, Mini-player bounds: ${JSON.stringify(miniPlayerBounds)}, Main window bounds: ${JSON.stringify(mainWindowBounds)}, Mini-player theme: ${miniPlayerTheme}`,
+      `Config loaded - Minimize to tray: ${minimizeToTray}, Video ad skipper: ${videoAdSkipperEnabled}, Video ad skip speed: ${VideoAdSkipSpeed}, Last URL: ${lastUrl}, Open last song: ${openLastSong}, Resume playback: ${resumePlayback}, Mini-player bounds: ${JSON.stringify(miniConfig.miniPlayerBounds)}, Main window bounds: ${JSON.stringify(mainWindowBounds)}, Mini-player theme: ${miniConfig.miniPlayerTheme}, Listen along auto-host: ${listenAlongAutoHost}`,
     );
     return config;
   } catch (error) {
@@ -172,18 +191,20 @@ async function loadConfig() {
 
 async function saveConfig() {
   try {
+    const miniConfig = getMiniPlayerConfig();
     const config = {
       minimizeToTray: minimizeToTray,
-      openMiniPlayerOnMinimize: openMiniPlayerOnMinimize,
+      openMiniPlayerOnMinimize: miniConfig.openMiniPlayerOnMinimize,
       videoAdSkipperEnabled: videoAdSkipperEnabled,
       VideoAdSkipSpeed: VideoAdSkipSpeed,
       lastUrl: lastUrl,
       openLastSong: openLastSong,
       resumePlayback: resumePlayback,
-      miniPlayerBounds: miniPlayerBounds,
+      discordRpcEnabled: discordRpcEnabled,
+      miniPlayerBounds: miniConfig.miniPlayerBounds,
       mainWindowBounds: mainWindowBounds,
-      miniPlayerTheme: miniPlayerTheme,
-      miniPlayerAlwaysOnTop: miniPlayerAlwaysOnTop,
+      miniPlayerTheme: miniConfig.miniPlayerTheme,
+      miniPlayerAlwaysOnTop: miniConfig.miniPlayerAlwaysOnTop,
       listenAlongServerUrl: listenAlongServerUrl,
       listenAlongHostName: listenAlongHostName,
       listenAlongAutoHost: listenAlongAutoHost,
@@ -200,121 +221,77 @@ async function saveConfig() {
 
 // Load a specific language file
 
-// Listen Along window
-function createListenAlongWindow() {
-  if (listenAlongWindow && !listenAlongWindow.isDestroyed()) {
-    listenAlongWindow.focus();
-    return;
-  }
-
-  listenAlongWindow = new BrowserWindow({
-    width: 430,
-    height: 580,
-    parent: mainWindow && !mainWindow.isDestroyed() ? mainWindow : undefined,
-    modal: false,
-    show: false,
-    resizable: false,
-    minimizable: false,
-    maximizable: false,
-    frame: false,
-    titleBarStyle: "hidden",
-    title: "Listen Along",
-    webPreferences: {
-      preload: path.join(__dirname, "listen-along/listen-along-preload.js"),
-      nodeIntegration: false,
-      contextIsolation: true,
-    },
-    icon: iconPath,
-  });
-
-  listenAlongWindow.setMenu(null);
-  listenAlongWindow.loadFile(
-    path.join(__dirname, "listen-along/listen-along.html"),
-  );
-
-  listenAlongWindow.once("ready-to-show", () => listenAlongWindow.show());
-
-  listenAlongWindow.on("closed", () => {
-    listenAlongWindow = null;
-    if (mainWindow && !mainWindow.isDestroyed()) {
-      mainWindow.focus();
-    }
-  });
-}
-
 // Listen Along IPC handlers
-const { clipboard } = require("electron");
-
-function _la_ipc() {
-  return require("electron").ipcMain;
-}
-
-_la_ipc().handle("la:create-party", async (_e, { hostName }) => {
+ipcMain.handle("la:create-party", async (_e, { hostName }) => {
+  const name = normalizeName(hostName || listenAlongHostName);
+  if (name.length < 3) {
+    throw new Error("Display name must be at least 3 characters.");
+  }
   const partyId = await createParty(
     DEFAULT_SERVER_URL,
-    hostName || listenAlongHostName,
+    name,
   );
   return { partyId };
 });
 
-_la_ipc().handle("la:join-party", async (_e, { partyId, guestName }) => {
+ipcMain.handle("la:join-party", async (_e, { partyId, guestName }) => {
+  const name = normalizeName(guestName || listenAlongHostName);
+  if (name.length < 3) {
+    throw new Error("Display name must be at least 3 characters.");
+  }
   return await joinParty(
     DEFAULT_SERVER_URL,
     partyId,
-    guestName || listenAlongHostName,
+    name,
   );
 });
 
-_la_ipc().handle("la:close-party", async () => {
+ipcMain.handle("la:close-party", async () => {
   await closeParty();
 });
 
-_la_ipc().handle("la:leave-party", async () => {
+ipcMain.handle("la:leave-party", async () => {
   await leaveParty();
 });
 
-_la_ipc().handle("la:get-state", () => getListenAlongState());
+ipcMain.handle("la:get-state", () => getListenAlongState());
 
-_la_ipc().handle("la:get-config", () => ({
+ipcMain.handle("la:get-config", () => ({
   serverUrl: DEFAULT_SERVER_URL,
   hostName: listenAlongHostName,
   autoHost: listenAlongAutoHost,
 }));
 
-_la_ipc().on("la:save-config", (_e, { hostName, autoHost }) => {
-  let nameChanged = false;
-  if (hostName !== undefined && listenAlongHostName !== hostName) {
-    listenAlongHostName = hostName;
-    nameChanged = true;
-  }
-  if (autoHost !== undefined) {
-    listenAlongAutoHost = !!autoHost;
-  }
-  
-  require("./listen-along/listenAlong").setAutoHost(listenAlongAutoHost, listenAlongHostName);
-  
-  // Force restart party if name changed while actively auto-hosting
-  if (nameChanged && listenAlongAutoHost) {
-    const { getListenAlongState, closeParty } = require("./listen-along/listenAlong");
-    const state = getListenAlongState();
-    if (state.isActive && state.isHost) {
-      closeParty(); // will auto-restart with new name
+ipcMain.on("la:save-config", (_e, { hostName, autoHost }) => {
+  if (hostName !== undefined) {
+    const name = normalizeName(hostName);
+    if (listenAlongHostName !== name) {
+      listenAlongHostName = name;
     }
   }
+  if (autoHost !== undefined) {
+    listenAlongAutoHost = !!autoHost && (listenAlongHostName.length >= 3);
+  }
 
+  require("./listen-along/listenAlong").setAutoHost(listenAlongAutoHost, listenAlongHostName);
   saveConfig();
 });
 
-_la_ipc().on("la:open-party-page", (_e, { partyId }) => {
+ipcMain.on("la:open-party-page", (_e, { partyId }) => {
+  const code = String(partyId || "").trim().toUpperCase();
+  if (!/^[A-Z0-9]{3,12}$/.test(code)) {
+    console.warn("Blocked opening party page with invalid party code");
+    return;
+  }
   const url = DEFAULT_SERVER_URL.replace(/\/$/, "");
-  shell.openExternal(`${url}/party/${partyId}`).catch(console.error);
+  shell.openExternal(`${url}/party/${code}`).catch(console.error);
 });
 
-_la_ipc().on("la:copy-text", (_e, text) => {
+ipcMain.on("la:copy-text", (_e, text) => {
   clipboard.writeText(String(text));
 });
 
-_la_ipc().handle("la:read-clipboard", () => {
+ipcMain.handle("la:read-clipboard", () => {
   try {
     const text = clipboard.readText();
     return typeof text === "string" ? text.trim() : "";
@@ -323,28 +300,11 @@ _la_ipc().handle("la:read-clipboard", () => {
   }
 });
 
-_la_ipc().on("la:close-window", () => {
-  if (listenAlongWindow && !listenAlongWindow.isDestroyed()) {
-    listenAlongWindow.close();
-  }
-});
-
-// Push state change events to the Listen Along window
+// Push state change events to options view
 function pushListenAlongState(state) {
-  if (listenAlongWindow && !listenAlongWindow.isDestroyed()) {
-    listenAlongWindow.webContents.send("la:state-changed", state);
+  if (optionsView && !optionsView.webContents.isDestroyed()) {
+    optionsView.webContents.send("la:state-changed", state);
   }
-  
-  // Update main menu label
-  try {
-    const menu = Menu.getApplicationMenu();
-    if (menu) {
-      const laItem = menu.getMenuItemById("listen-along-menu");
-      if (laItem) {
-        laItem.label = state && state.isActive ? "Listen Along 🔴" : "Listen Along";
-      }
-    }
-  } catch (e) {}
 }
 
 async function loadLanguage(lang) {
@@ -373,245 +333,132 @@ function t(key, ...args) {
   });
 }
 
-function createSettingsWindow() {
-  if (settingsWindow && !settingsWindow.isDestroyed()) {
-    settingsWindow.focus();
-    return settingsWindow;
+// Options view and topbar management
+function updateViewBounds() {
+  if (!mainWindow || mainWindow.isDestroyed()) return;
+  const bounds = mainWindow.getContentBounds();
+  const contentHeight = Math.max(0, bounds.height - TOPBAR_HEIGHT);
+  if (ytView && !ytView.webContents.isDestroyed()) {
+    ytView.setBounds({ x: 0, y: TOPBAR_HEIGHT, width: bounds.width, height: contentHeight });
   }
+  if (optionsView && !optionsView.webContents.isDestroyed()) {
+    optionsView.setBounds({ x: 0, y: TOPBAR_HEIGHT, width: bounds.width, height: contentHeight });
+  }
+}
 
-  settingsWindow = new BrowserWindow({
-    width: 800,
-    height: 600,
-    parent: mainWindow,
-    modal: false,
-    frame: false,
-    show: false,
-    resizable: false,
-    webPreferences: {
-      preload: path.join(__dirname, "settings-filters/sf-preload.js"),
-      nodeIntegration: false,
-      contextIsolation: true,
-    },
-    icon: iconPath,
-  });
-
-  settingsWindow.setMenu(null);
-  settingsWindow.loadFile(
-    path.join(__dirname, "settings-filters/settings-filters.html"),
-  );
-
-  settingsWindow.once("ready-to-show", () => {
-    settingsWindow.show();
-  });
-
-  settingsWindow.on("closed", () => {
-    settingsWindow = null;
+function handleCommonShortcuts(event, input) {
+  if (
+    input.key === "F12" ||
+    (input.control && input.shift && input.key.toLowerCase() === "i")
+  ) {
+    const target = isOptionsOpen && optionsView ? optionsView.webContents : (ytView?.webContents || mainWindow?.webContents);
+    if (target && !target.isDestroyed()) target.toggleDevTools();
+    event.preventDefault();
+  } else if (
+    input.key === "F5" ||
+    (input.control && input.key.toLowerCase() === "r")
+  ) {
+    if (isOptionsOpen) hideOptionsView();
+    reloadPlayerView();
+    event.preventDefault();
+  } else if (input.control && input.key === ",") {
+    toggleOptionsView();
+    event.preventDefault();
+  } else if (input.control && input.key.toLowerCase() === "q") {
+    app.isQuiting = true;
     if (mainWindow && !mainWindow.isDestroyed()) {
-      mainWindow.focus();
+      mainWindow.close();
+    } else {
+      app.quit();
     }
-  });
-
-  return settingsWindow;
+    event.preventDefault();
+  } else if (input.key === "Escape" && isOptionsOpen) {
+    hideOptionsView();
+    event.preventDefault();
+  }
 }
 
-function createAboutWindow() {
-  aboutWindow = new BrowserWindow({
-    width: 450,
-    height: 450,
-    parent: mainWindow,
-    modal: true,
-    show: false,
-    resizable: false,
-    icon: iconPath,
-    title: t("about_app"),
-    webPreferences: {
-      preload: path.join(__dirname, "about/about-preload.js"),
-      nodeIntegration: false,
-      contextIsolation: true,
-    },
-  });
+function showOptionsView() {
+  if (!mainWindow || mainWindow.isDestroyed()) return;
 
-  // Remove the menu bar for the about window
-  aboutWindow.setMenu(null);
+  isOptionsOpen = true;
 
-  // Load the new about.html file
-  aboutWindow.loadFile(path.join(__dirname, "about/about.html"));
-
-  // Show the window once it is ready
-  aboutWindow.once("ready-to-show", () => {
-    aboutWindow.show();
-  });
-
-  aboutWindow.on("closed", () => {
-    aboutWindow = null;
-  });
-}
-
-function createMiniPlayerWindow() {
-  if (miniPlayerWindow) {
-    miniPlayerWindow.focus();
-    return;
+  if (!optionsView) {
+    optionsView = new BrowserView({
+      webPreferences: {
+        preload: path.join(__dirname, "options/options-preload.js"),
+        nodeIntegration: false,
+        contextIsolation: true,
+      },
+    });
+    optionsView.webContents.loadFile(path.join(__dirname, "options/options.html"));
+    optionsView.webContents.on("before-input-event", handleCommonShortcuts);
   }
 
-  const defaultMiniBounds = {
-    x: undefined,
-    y: undefined,
-    width: 320,
-    height: 105,
-  };
-  const safeBounds = ensureWindowIsVisible(miniPlayerBounds, defaultMiniBounds);
+  const views = mainWindow.getBrowserViews();
+  if (!views.includes(optionsView)) {
+    mainWindow.addBrowserView(optionsView);
+  }
+  mainWindow.setTopBrowserView(optionsView);
 
-  miniPlayerWindow = new BrowserWindow({
-    width: safeBounds.width || 320,
-    height: safeBounds.height || 105,
-    x: safeBounds.x,
-    y: safeBounds.y,
-    parent: mainWindow.isVisible() ? mainWindow : null,
-    frame: false,
-    resizable: false,
-    movable: true,
-    alwaysOnTop: miniPlayerAlwaysOnTop,
-    show: false,
-    minimizable: false,
-    maximizable: false,
-    skipTaskbar: true,
-    webPreferences: {
-      preload: path.join(__dirname, "mini-player/preload-mini-player.js"),
-      nodeIntegration: false,
-      contextIsolation: true,
-    },
-    icon: iconPath,
-  });
+  const bounds = mainWindow.getContentBounds();
+  const contentHeight = Math.max(0, bounds.height - TOPBAR_HEIGHT);
+  optionsView.setBounds({ x: 0, y: TOPBAR_HEIGHT, width: bounds.width, height: contentHeight });
+  optionsView.setAutoResize({ width: true, height: true });
+  optionsView.webContents.focus();
 
-  miniPlayerWindow.loadFile(
-    path.join(__dirname, "mini-player/mini-player.html"),
-  );
-
-  miniPlayerWindow.once("ready-to-show", () => {
-    miniPlayerWindow.show();
-  });
-
-  // Enable F12 and Ctrl+Shift+i for DevTools
-  miniPlayerWindow.webContents.on("before-input-event", (event, input) => {
-    if (
-      input.key === "F12" ||
-      (input.control && input.shift && input.key.toLowerCase() === "i")
-    ) {
-      miniPlayerWindow.webContents.openDevTools({ mode: "detach" });
-      event.preventDefault();
-    }
-  });
-
-  const saveMiniPlayerPosition = () => {
-    if (miniPlayerWindow && !miniPlayerWindow.isDestroyed()) {
-      const bounds = miniPlayerWindow.getBounds();
-      // Keep width and height out of the saved config to avoid growth on Windows DPI scaling
-      miniPlayerBounds = { x: bounds.x, y: bounds.y };
-      saveConfig();
-    }
-  };
-
-  miniPlayerWindow.on("moved", saveMiniPlayerPosition);
-  miniPlayerWindow.on("hide", saveMiniPlayerPosition);
-  miniPlayerWindow.on("close", saveMiniPlayerPosition);
-  miniPlayerWindow.on("closed", () => {
-    if (miniPlayerStateInterval) {
-      clearInterval(miniPlayerStateInterval);
-      miniPlayerStateInterval = null;
-    }
-    miniPlayerWindow = null;
-
-    // Show main window when mini player is closed (unless app is quitting)
-    if (!app.isQuiting && mainWindow && !mainWindow.isDestroyed()) {
-      mainWindow.show();
-      mainWindow.focus();
-    }
-  });
-
-  // Start polling state when mini player is opened
-  startMiniPlayerStatePolling();
+  if (!mainWindow.webContents.isDestroyed()) {
+    mainWindow.webContents.send("options:view-state", true);
+  }
 }
 
-let miniPlayerStateInterval;
-function startMiniPlayerStatePolling() {
-  if (miniPlayerStateInterval) clearInterval(miniPlayerStateInterval);
-
-  miniPlayerStateInterval = setInterval(async () => {
-    if (
-      !miniPlayerWindow ||
-      miniPlayerWindow.isDestroyed() ||
-      !mainWindow ||
-      mainWindow.isDestroyed()
-    )
-      return;
-
-    try {
-      if (mainWindow.webContents.isDestroyed()) return;
-      const state = await mainWindow.webContents.executeJavaScript(`
-        (() => {
-          const playPauseBtn = document.querySelector("#play-pause-button");
-          const likeBtn = document.querySelector("#button-shape-like > button");
-          const dislikeBtn = document.querySelector("#button-shape-dislike > button");
-          const timeInfo = document.querySelector(".time-info");
-          const title = document.querySelector(".middle-controls .title");
-          const byline = document.querySelector(".middle-controls .byline");
-
-          const thumbnailImg =
-            document.querySelector("ytmusic-player-bar img#thumbnail") ||
-            document.querySelector("ytmusic-player-bar img") ||
-            document.querySelector("#player-bar img") ||
-            document.querySelector("img#thumbnail") ||
-            document.querySelector(".thumbnail img");
-
-          const getImgSrc = (img) => {
-            if (!img) return "";
-            return img.currentSrc || img.src || img.getAttribute("src") || "";
-          };
-
-          const thumbnailSrc = getImgSrc(thumbnailImg);
-
-          const progress = document.querySelector("#progress-bar");
-          const buffering = document.querySelector("#buffering-spinner");
-          
-          const getIconLabel = (btn) => {
-            if (!btn) return "";
-            return (btn.getAttribute('aria-label') || btn.title || "").toLowerCase();
-          };
-
-          const label = getIconLabel(playPauseBtn);
-          // "Pausar" (ES), "Pause" (EN), "Pausa" (IT/PT)
-          const isPlaying = label.includes("paus");
-
-          return {
-            isPlaying: isPlaying,
-            isLiked: likeBtn ? likeBtn.getAttribute('aria-pressed') === 'true' : false,
-            isDisliked: dislikeBtn ? dislikeBtn.getAttribute('aria-pressed') === 'true' : false,
-            timeInfo: timeInfo ? timeInfo.innerText.trim() : "",
-            title: title ? title.innerText.trim() : "",
-            artist: byline ? byline.innerText.trim() : "",
-            thumbnail: thumbnailSrc,
-            isBuffering: buffering ? !buffering.hidden : false,
-            progress: progress ? progress.value : 0,
-            progressMax: progress ? progress.max : 100
-          };
-        })()
-      `);
-
-      if (
-        miniPlayerWindow &&
-        !miniPlayerWindow.isDestroyed() &&
-        miniPlayerWindow.webContents &&
-        !miniPlayerWindow.webContents.isDestroyed()
-      ) {
-        miniPlayerWindow.webContents.send("state-update", state);
-      }
-    } catch (e) {
-      console.error("Error polling player state:", e);
+function hideOptionsView() {
+  isOptionsOpen = false;
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    if (optionsView) {
+      mainWindow.removeBrowserView(optionsView);
     }
-  }, 1000);
+    if (ytView) {
+      mainWindow.setTopBrowserView(ytView);
+      ytView.webContents.focus();
+    }
+    if (!mainWindow.webContents.isDestroyed()) {
+      mainWindow.webContents.send("options:view-state", false);
+    }
+  }
 }
 
-const { ipcMain } = require("electron");
+function toggleOptionsView() {
+  if (isOptionsOpen) {
+    hideOptionsView();
+  } else {
+    showOptionsView();
+  }
+}
+
+ipcMain.on("topbar:toggle-options", () => {
+  toggleOptionsView();
+});
+
+ipcMain.on("topbar:refresh", () => {
+  if (isOptionsOpen) hideOptionsView();
+  reloadPlayerView();
+});
+
+ipcMain.on("topbar:quit", () => {
+  app.isQuiting = true;
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.close();
+  } else {
+    app.quit();
+  }
+});
+
+function getPlayerWebContents() {
+  if (ytView && !ytView.webContents.isDestroyed()) return ytView.webContents;
+  if (mainWindow && !mainWindow.webContents.isDestroyed()) return mainWindow.webContents;
+  return null;
+}
 
 ipcMain.handle("get-filters", async () => {
   return await getFiltersExternal();
@@ -619,7 +466,8 @@ ipcMain.handle("get-filters", async () => {
 
 ipcMain.handle("get-translations", (event, keys) => {
   const translations = {};
-  keys.forEach((key) => {
+  const requestedKeys = Array.isArray(keys) ? keys : [];
+  requestedKeys.forEach((key) => {
     translations[key] = t(key);
   });
   return translations;
@@ -649,7 +497,7 @@ ipcMain.on("reset-adblock-stats", () => {
 
 ipcMain.on("save-filters", async (event, newFilters) => {
   await saveFiltersExternal(newFilters);
-  const success = await initFiltersExternal(true);
+  const success = await initFiltersExternal(false);
   adblockActive = !!success;
   if (success) setupWRExternal();
 });
@@ -658,7 +506,7 @@ ipcMain.on("reset-filters", async (event) => {
   try {
     await resetFiltersExternal();
     console.log("User filters reset to default successfully.");
-    const success = await initFiltersExternal(true);
+    const success = await initFiltersExternal(false);
     adblockActive = !!success;
     if (success) setupWRExternal();
   } catch (error) {
@@ -671,6 +519,7 @@ ipcMain.handle("get-about-info", () => {
     appName: t("app_name"),
     appVersion: APP_VERSION,
     appDescription: t("about_app_description"),
+    disclaimer: t("about_disclaimer"),
     githubUrl: "https://github.com/nubsuki/YouTube-Music-Player",
     translations: {
       accept: t("accept"),
@@ -689,141 +538,123 @@ ipcMain.handle("get-ad-skipper-settings", () => {
 });
 
 ipcMain.on("save-ad-skipper-settings", async (event, settings) => {
-  videoAdSkipperEnabled = settings.enabled;
-  VideoAdSkipSpeed = settings.speed;
+  videoAdSkipperEnabled = !!settings.enabled;
+  VideoAdSkipSpeed = settings.speed || 2;
   await saveConfig();
+  // Apply immediately without requiring a page reload
+  if (ytView && !ytView.webContents.isDestroyed()) {
+    injectVideoAdSkipper(ytView.webContents, {
+      enabled: videoAdSkipperEnabled,
+      speed: VideoAdSkipSpeed,
+      interval: VideoAdSkipInterval,
+    });
+  }
   console.log(
     `Video ad skipper settings updated: Enabled=${videoAdSkipperEnabled}, Speed=${VideoAdSkipSpeed}x`,
   );
 });
 
-ipcMain.on("open-external-link", (event, url) => {
-  shell
-    .openExternal(url)
-    .catch((error) => console.error("Error opening external link:", error));
-});
+const ALLOWED_EXTERNAL_PROTOCOLS = new Set(["https:", "http:"]);
 
-let miniPlayerSettingsWindow;
-function createMiniPlayerSettingsWindow() {
-  if (miniPlayerSettingsWindow) {
-    miniPlayerSettingsWindow.focus();
+function openExternalSafely(rawUrl) {
+  let parsed;
+  try {
+    parsed = new URL(String(rawUrl));
+  } catch {
+    console.warn("Blocked external link with invalid URL");
     return;
   }
-
-  const parentWindow =
-    miniPlayerWindow && !miniPlayerWindow.isDestroyed()
-      ? miniPlayerWindow
-      : mainWindow && !mainWindow.isDestroyed()
-        ? mainWindow
-        : undefined;
-
-  miniPlayerSettingsWindow = new BrowserWindow({
-    width: 250,
-    height: 190,
-    parent: parentWindow,
-    modal: false,
-    frame: false,
-    resizable: false,
-    show: false,
-    title: t("mini_player_settings"),
-    webPreferences: {
-      preload: path.join(__dirname, "mini-player/preload-mini-player.js"),
-      nodeIntegration: false,
-      contextIsolation: true,
-    },
-    icon: iconPath,
-  });
-
-  miniPlayerSettingsWindow.setMenu(null);
-  miniPlayerSettingsWindow.loadFile(
-    path.join(__dirname, "mini-player/settings.html"),
-  );
-
-  miniPlayerSettingsWindow.once("ready-to-show", () => {
-    miniPlayerSettingsWindow.show();
-  });
-
-  miniPlayerSettingsWindow.on("closed", () => {
-    miniPlayerSettingsWindow = null;
-    if (miniPlayerWindow && !miniPlayerWindow.isDestroyed()) {
-      miniPlayerWindow.focus();
-    } else if (mainWindow && !mainWindow.isDestroyed()) {
-      mainWindow.focus();
-    }
-  });
+  if (!ALLOWED_EXTERNAL_PROTOCOLS.has(parsed.protocol)) {
+    console.warn(`Blocked external link with unsupported protocol: ${parsed.protocol}`);
+    return;
+  }
+  shell
+    .openExternal(parsed.toString())
+    .catch((error) => console.error("Error opening external link:", error));
 }
 
-ipcMain.on("mini-player-drag-start", (event) => {
-  const win = BrowserWindow.fromWebContents(event.sender);
-  if (!win || win.isDestroyed()) return;
-  const cursor = screen.getCursorScreenPoint();
-  const [winX, winY] = win.getPosition();
-  win._dragOffset = { x: cursor.x - winX, y: cursor.y - winY };
+ipcMain.on("open-external-link", (event, url) => {
+  openExternalSafely(url);
 });
 
-ipcMain.on("mini-player-drag-move", (event) => {
-  const win = BrowserWindow.fromWebContents(event.sender);
-  if (!win || win.isDestroyed() || !win._dragOffset) return;
-  const cursor = screen.getCursorScreenPoint();
-  win.setPosition(
-    Math.round(cursor.x - win._dragOffset.x),
-    Math.round(cursor.y - win._dragOffset.y),
+// Hosts the embedded YouTube Music view is allowed to navigate to
+const ALLOWED_YT_HOST_SUFFIXES = [
+  "youtube.com",
+  "google.com",
+  "googleusercontent.com",
+  "gstatic.com",
+  "googlevideo.com",
+  "ggpht.com",
+  "ytimg.com",
+];
+
+function isAllowedYtMusicHost(rawUrl) {
+  let hostname;
+  try {
+    hostname = new URL(String(rawUrl)).hostname.toLowerCase();
+  } catch {
+    return false;
+  }
+  return ALLOWED_YT_HOST_SUFFIXES.some(
+    (suffix) => hostname === suffix || hostname.endsWith(`.${suffix}`),
   );
+}
+
+// Reload the player, retrying the last real URL if the offline page is showing
+function reloadPlayerView() {
+  if (!ytView || ytView.webContents.isDestroyed()) return;
+  if (ytView.webContents.getURL().startsWith("file:")) {
+    ytView.webContents.loadURL(lastFailedUrl || "https://music.youtube.com");
+  } else {
+    ytView.webContents.reload();
+  }
+}
+
+// Options window IPC
+ipcMain.handle("options:get-app-settings", () => {
+  const loginItemSettings = app.getLoginItemSettings();
+  return {
+    startWithSystem: loginItemSettings.openAtLogin,
+    openLastSong,
+    resumePlayback,
+    minimizeToTray,
+    openMiniPlayerOnMinimize: getOpenMiniPlayerOnMinimize(),
+    discordRpcEnabled,
+  };
 });
 
-ipcMain.on("mini-player-drag-end", (event) => {
-  const win = BrowserWindow.fromWebContents(event.sender);
-  if (!win || win.isDestroyed()) return;
-  win._dragOffset = null;
-});
-
-ipcMain.on("open-mini-player-settings", () => {
-  createMiniPlayerSettingsWindow();
-});
-
-ipcMain.on("close-mini-player-settings", () => {
-  if (miniPlayerSettingsWindow && !miniPlayerSettingsWindow.isDestroyed()) {
-    miniPlayerSettingsWindow.close();
+ipcMain.on("options:save-app-settings", (event, s) => {
+  if (typeof s.startWithSystem === "boolean") {
+    app.setLoginItemSettings({ openAtLogin: s.startWithSystem, path: app.getPath("exe") });
+  }
+  if (typeof s.openLastSong === "boolean") toggleReOpenBehavior(s.openLastSong);
+  if (typeof s.resumePlayback === "boolean") toggleResumeBehavior(s.resumePlayback);
+  if (typeof s.minimizeToTray === "boolean") toggleTrayBehavior(s.minimizeToTray);
+  if (typeof s.openMiniPlayerOnMinimize === "boolean") toggleMiniPlayerOnMinimize(s.openMiniPlayerOnMinimize);
+  if (typeof s.discordRpcEnabled === "boolean" && s.discordRpcEnabled !== discordRpcEnabled) {
+    discordRpcEnabled = s.discordRpcEnabled;
+    setDiscordRpcEnabled(discordRpcEnabled);
+    saveConfig();
   }
 });
 
-ipcMain.handle("get-mini-player-theme", () => {
-  return miniPlayerTheme;
-});
-
-ipcMain.on("set-mini-player-theme", (event, theme) => {
-  miniPlayerTheme = theme;
-  saveConfig();
-  console.log(`Mini player theme updated to: ${theme}`);
-
-  // Notify all windows of theme change
-  if (miniPlayerWindow && !miniPlayerWindow.isDestroyed()) {
-    miniPlayerWindow.webContents.send("theme-changed", theme);
+ipcMain.handle("options:check-for-updates", async () => {
+  try {
+    const result = await autoUpdater.checkForUpdates();
+    if (result && result.updateInfo && result.updateInfo.version !== APP_VERSION) {
+      return { message: `Update available: v${result.updateInfo.version}` };
+    }
+    return { message: "You are on the latest version." };
+  } catch (e) {
+    return { message: "Error checking for updates: " + e.message };
   }
 });
 
-ipcMain.handle("get-mini-player-always-on-top", () => {
-  return miniPlayerAlwaysOnTop;
+ipcMain.on("options:close", () => {
+  hideOptionsView();
 });
 
-ipcMain.on("set-mini-player-always-on-top", (event, enabled) => {
-  miniPlayerAlwaysOnTop = !!enabled;
-  saveConfig();
-
-  if (miniPlayerWindow && !miniPlayerWindow.isDestroyed()) {
-    miniPlayerWindow.setAlwaysOnTop(miniPlayerAlwaysOnTop);
-  }
-});
-
-ipcMain.on("resize-about-window", (event, width, height) => {
-  if (aboutWindow) {
-    // Set the size and adjust content bounds (important for different OS)
-    aboutWindow.setSize(width, height, true);
-
-    // Center the window after resizing
-    aboutWindow.center();
-  }
-});
+let lastRatingControlTime = 0;
 
 ipcMain.on("player-control", (event, data) => {
   if (!mainWindow) return;
@@ -844,14 +675,22 @@ ipcMain.on("player-control", (event, data) => {
       script =
         '{ const btn = document.querySelector(".next-button"); if (btn) btn.click(); }';
       break;
-    case "like":
+    case "like": {
+      const now = Date.now();
+      if (now - lastRatingControlTime < 350) return;
+      lastRatingControlTime = now;
       script =
-        '{ const btn = document.querySelector("#button-shape-like > button"); if (btn) btn.click(); }';
+        '{ const btn = document.querySelector("#button-shape-like > button") || document.querySelector("ytmusic-like-button-renderer #button-shape-like > button"); if (btn) btn.click(); }';
       break;
-    case "dislike":
+    }
+    case "dislike": {
+      const now = Date.now();
+      if (now - lastRatingControlTime < 350) return;
+      lastRatingControlTime = now;
       script =
-        '{ const btn = document.querySelector("#button-shape-dislike > button"); if (btn) btn.click(); }';
+        '{ const btn = document.querySelector("#button-shape-dislike > button") || document.querySelector("ytmusic-like-button-renderer #button-shape-dislike > button"); if (btn) btn.click(); }';
       break;
+    }
     case "seek":
       if (typeof data.value !== "undefined") {
         const rawValue = data.value;
@@ -870,9 +709,7 @@ ipcMain.on("player-control", (event, data) => {
       }
       break;
     case "maximize":
-      if (miniPlayerWindow) {
-        miniPlayerWindow.close();
-      }
+      closeMiniPlayerWindow();
       if (mainWindow) {
         mainWindow.show();
         mainWindow.focus();
@@ -880,10 +717,12 @@ ipcMain.on("player-control", (event, data) => {
       break;
   }
 
-  if (script && mainWindow && !mainWindow.webContents.isDestroyed()) {
-    mainWindow.webContents.executeJavaScript(script).catch((e) => {
+  const player = getPlayerWebContents();
+  if (script && player) {
+    player.executeJavaScript(script).catch((e) => {
       console.error("Error executing player control script:", e);
     });
+    triggerQuickPoll(300);
   }
 });
 
@@ -896,9 +735,7 @@ function createTray() {
     {
       label: t("show"),
       click: () => {
-        if (miniPlayerWindow) {
-          miniPlayerWindow.close();
-        }
+        closeMiniPlayerWindow();
         mainWindow.show();
         mainWindow.focus();
       },
@@ -912,16 +749,12 @@ function createTray() {
           width: 1200,
           height: 800,
         };
-        miniPlayerBounds = { x: undefined, y: undefined };
+        resetMiniPlayerPosition();
         saveConfig();
 
         if (mainWindow && !mainWindow.isDestroyed()) {
           mainWindow.setSize(1200, 800);
           mainWindow.center();
-        }
-
-        if (miniPlayerWindow && !miniPlayerWindow.isDestroyed()) {
-          miniPlayerWindow.center();
         }
       },
     },
@@ -942,14 +775,12 @@ function createTray() {
     if (mainWindow.isVisible()) {
       mainWindow.hide();
       // Show the mini player if the option is enabled
-      if (openMiniPlayerOnMinimize) {
+      if (getOpenMiniPlayerOnMinimize()) {
         createMiniPlayerWindow();
       }
     } else {
       // Close the mini player when showing the main window
-      if (miniPlayerWindow) {
-        miniPlayerWindow.close();
-      }
+      closeMiniPlayerWindow();
       mainWindow.show();
       mainWindow.focus();
     }
@@ -982,7 +813,19 @@ function toggleTrayBehavior(enabled) {
 
 function toggleReOpenBehavior(enabled) {
   openLastSong = enabled;
-  saveConfig();
+  if (enabled) {
+    if (ytView && !ytView.webContents.isDestroyed()) {
+      captureCurrentSongState(ytView.webContents).then((st) => {
+        if (st && st.songUrl) lastUrl = st.songUrl;
+        saveConfig();
+      });
+    } else {
+      saveConfig();
+    }
+  } else {
+    lastUrl = "https://music.youtube.com";
+    saveConfig();
+  }
   createMenu();
   console.log(`Open last song: ${enabled ? "Enabled" : "Disabled"}`);
 }
@@ -992,14 +835,6 @@ function toggleResumeBehavior(enabled) {
   saveConfig();
   createMenu();
   console.log(`Resume playback: ${enabled ? "Enabled" : "Disabled"}`);
-}
-function toggleMiniPlayerOnMinimize(enabled) {
-  openMiniPlayerOnMinimize = enabled;
-  saveConfig();
-  createMenu();
-  console.log(
-    `Open mini player on minimize: ${enabled ? "Enabled" : "Disabled"}`,
-  );
 }
 
 // Load all filters in parallel
@@ -1029,206 +864,21 @@ function handleStartupSettings() {
 }
 
 function createMenu() {
-  const loginItemSettings = app.getLoginItemSettings();
-
-  const template = [
-    {
-      label: t("settings"),
-      submenu: [
-        {
-          label: t("start_with_system"),
-          type: "checkbox",
-          checked: loginItemSettings.openAtLogin,
-          click: (menuItem) => {
-            app.setLoginItemSettings({
-              openAtLogin: menuItem.checked,
-              path: app.getPath("exe"),
-            });
-            console.log(`Startup ${menuItem.checked ? "enabled" : "disabled"}`);
-          },
-        },
-        { type: "separator" },
-        {
-          label: t("minimize_to_tray"),
-          type: "checkbox",
-          checked: minimizeToTray,
-          click: (menuItem) => {
-            toggleTrayBehavior(menuItem.checked);
-          },
-        },
-        // Show tray options only when enabled
-        ...(minimizeToTray
-          ? [
-              {
-                label: t("open_mini_player"),
-                type: "checkbox",
-                checked: openMiniPlayerOnMinimize,
-                click: (menuItem) => {
-                  toggleMiniPlayerOnMinimize(menuItem.checked);
-                },
-              },
-            ]
-          : []),
-        ...(minimizeToTray
-          ? [
-              {
-                label: t("hide_to_tray"),
-                accelerator: "Ctrl+H",
-                click: () => {
-                  mainWindow.hide();
-                },
-              },
-            ]
-          : []),
-        {
-          label: t("mini_player_settings"),
-          click: () => {
-            createMiniPlayerSettingsWindow();
-          },
-        },
-        { type: "separator" },
-        {
-          label: t("reopen_last_song"),
-          type: "checkbox",
-          checked: openLastSong,
-          click: (menuItem) => {
-            toggleReOpenBehavior(menuItem.checked);
-          },
-        },
-        ...(openLastSong
-          ? [
-              {
-                label: t("resume_playback"),
-                type: "checkbox",
-                checked: resumePlayback,
-                click: (menuItem) => {
-                  toggleResumeBehavior(menuItem.checked);
-                },
-              },
-            ]
-          : []),
-        { type: "separator" },
-        {
-          label: t("ad_filter_settings"),
-          click: () => {
-            createSettingsWindow();
-          },
-        },
-        {
-          label: t("update_ad_filters"),
-          click: async () => {
-            console.log("Manually updating filters...");
-            const success = await initFiltersExternal(true);
-            console.log(success ? "Filters updated!" : "Filter update failed");
-
-            console.log("Restarting...");
-            app.isQuiting = true;
-
-            if (
-              miniPlayerSettingsWindow &&
-              !miniPlayerSettingsWindow.isDestroyed()
-            )
-              miniPlayerSettingsWindow.close();
-            if (settingsWindow && !settingsWindow.isDestroyed())
-              settingsWindow.close();
-            if (aboutWindow && !aboutWindow.isDestroyed()) aboutWindow.close();
-            if (miniPlayerWindow && !miniPlayerWindow.isDestroyed())
-              miniPlayerWindow.close();
-
-            app.relaunch();
-            app.quit();
-          },
-        },
-        { type: "separator" },
-        {
-          label: t("quit"),
-          accelerator: "Ctrl+Q",
-          click: () => {
-            app.isQuiting = true;
-            app.quit();
-          },
-        },
-      ],
-    },
-    {
-      label: "Listen Along",
-      id: "listen-along-menu",
-      click: () => {
-        createListenAlongWindow();
-      },
-    },
-    {
-      label: t("help"),
-      submenu: [
-        {
-          label: t("check_for_updates"),
-          click: async () => {
-            try {
-              // Check for updates
-              const result = await autoUpdater.checkForUpdates();
-
-              if (
-                result &&
-                result.updateInfo &&
-                result.updateInfo.version !== APP_VERSION
-              ) {
-                // Update available
-                const updateResult = await dialog.showMessageBox(mainWindow, {
-                  type: "question",
-                  title: t("update_available"),
-                  message: t("a_new_version_q", result.updateInfo.version),
-                  buttons: [t("download_now"), t("not_now")],
-                  defaultId: 0,
-                  cancelId: 1,
-                });
-
-                if (updateResult.response === 0) {
-                  // show progress dialog
-                  dialog.showMessageBox(mainWindow, {
-                    type: "info",
-                    title: t("downloading_update"),
-                    message: t("downloading_in_background"),
-                    buttons: [t("ok")],
-                  });
-
-                  // Start download
-                  autoUpdater.downloadUpdate();
-                }
-              } else {
-                // No updates available
-                dialog.showMessageBox(mainWindow, {
-                  type: "info",
-                  title: t("no_updates_available"),
-                  message: t("no_updates_available_message"),
-                  buttons: [t("ok")],
-                });
-              }
-            } catch (error) {
-              dialog.showMessageBox(mainWindow, {
-                type: "error",
-                title: t("update_error"),
-                message: t("error_d", error.message),
-                buttons: [t("ok")],
-              });
-            }
-          },
-        },
-        {
-          label: t("about"),
-          click: () => {
-            createAboutWindow();
-          },
-        },
-      ],
-    },
-  ];
-
-  const menu = Menu.buildFromTemplate(template);
-  Menu.setApplicationMenu(menu);
+  Menu.setApplicationMenu(null);
 }
 
 async function createWindow() {
   await loadConfig();
+
+  initMiniPlayer({
+    getMainWindow: () => mainWindow,
+    getPlayerWebContents: () => getPlayerWebContents(),
+    iconPath,
+    saveConfig: () => saveConfig(),
+    createMenu: () => createMenu(),
+    t,
+    isQuitting: () => app.isQuiting,
+  });
 
   // Get system locale and load language
   const userLocale = app.getLocale().split("-")[0];
@@ -1238,7 +888,7 @@ async function createWindow() {
     createTray();
   }
 
-  const safeMainBounds = ensureWindowIsVisible(mainWindowBounds, {
+  const windowBounds = ensureWindowIsVisible(mainWindowBounds, {
     x: undefined,
     y: undefined,
     width: 1200,
@@ -1246,17 +896,66 @@ async function createWindow() {
   });
 
   mainWindow = new BrowserWindow({
-    width: safeMainBounds.width || 1200,
-    height: safeMainBounds.height || 800,
-    x: safeMainBounds.x,
-    y: safeMainBounds.y,
-    autoHideMenuBar: false,
+    width: windowBounds.width || 1200,
+    height: windowBounds.height || 800,
+    x: windowBounds.x,
+    y: windowBounds.y,
+    minWidth: 800,
+    minHeight: 600,
     icon: iconPath,
+    title: "YouTube Music",
+    titleBarStyle: "hidden",
+    titleBarOverlay: {
+      color: "#07070a",
+      symbolColor: "#a1a1aa",
+      height: 38,
+    },
     webPreferences: {
+      preload: path.join(__dirname, "topbar/topbar-preload.js"),
       nodeIntegration: false,
+      contextIsolation: true,
     },
   });
 
+  Menu.setApplicationMenu(null);
+  mainWindow.loadFile(path.join(__dirname, "topbar/topbar.html"));
+
+  ytView = new BrowserView({
+    webPreferences: {
+      nodeIntegration: false,
+      contextIsolation: true,
+    },
+  });
+  mainWindow.addBrowserView(ytView);
+  ytView.setAutoResize({ width: true, height: true });
+  updateViewBounds();
+
+  // Restrict navigation and popups from the remote YouTube Music content
+  ytView.webContents.setWindowOpenHandler(({ url }) => {
+    if (isAllowedYtMusicHost(url)) {
+      return {
+        action: "allow",
+        overrideBrowserWindowOptions: {
+          webPreferences: { nodeIntegration: false, contextIsolation: true, sandbox: true },
+        },
+      };
+    }
+    openExternalSafely(url);
+    return { action: "deny" };
+  });
+  ytView.webContents.on("will-navigate", (event, url) => {
+    if (!isAllowedYtMusicHost(url)) {
+      event.preventDefault();
+      openExternalSafely(url);
+    }
+  });
+  ytView.webContents.on("did-navigate-in-page", (_e, url) => {
+    if (openLastSong && url && isAllowedYtMusicHost(url) && (url.includes("/watch") || url.includes("v="))) {
+      lastUrl = url;
+    }
+  });
+
+  let saveMainWindowBoundsTimer = null;
   const saveMainWindowBounds = () => {
     if (mainWindow && !mainWindow.isDestroyed()) {
       const bounds = mainWindow.getBounds();
@@ -1266,25 +965,32 @@ async function createWindow() {
         width: bounds.width,
         height: bounds.height,
       };
-      saveConfig();
+      if (saveMainWindowBoundsTimer) clearTimeout(saveMainWindowBoundsTimer);
+      saveMainWindowBoundsTimer = setTimeout(() => {
+        saveConfig();
+      }, 500);
     }
   };
 
   mainWindow.on("moved", saveMainWindowBounds);
-  mainWindow.on("resized", saveMainWindowBounds);
+  mainWindow.on("resized", () => {
+    saveMainWindowBounds();
+    updateViewBounds();
+  });
+  mainWindow.on("maximize", () => updateViewBounds());
+  mainWindow.on("unmaximize", () => updateViewBounds());
 
-  // Enable F12 and Ctrl+Shift+i for DevTools - for Advanced Users
-  mainWindow.webContents.on("before-input-event", (event, input) => {
-    if (
-      input.key === "F12" ||
-      (input.control && input.shift && input.key.toLowerCase() === "i")
-    ) {
-      mainWindow.webContents.toggleDevTools();
-      event.preventDefault();
+  mainWindow.webContents.on("before-input-event", handleCommonShortcuts);
+  ytView.webContents.on("before-input-event", handleCommonShortcuts);
+
+  ytView.webContents.on("page-title-updated", (_e, title) => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.setTitle(title || "YouTube Music");
     }
   });
-
-  createMenu();
+  mainWindow.on("page-title-updated", (e) => {
+    e.preventDefault();
+  });
 
   // Load filters in background
   initFiltersExternal().then((success) => {
@@ -1303,7 +1009,7 @@ async function createWindow() {
       mainWindow.hide();
       console.log("App minimized to tray");
 
-      if (openMiniPlayerOnMinimize) {
+      if (getOpenMiniPlayerOnMinimize()) {
         createMiniPlayerWindow();
       }
 
@@ -1320,69 +1026,18 @@ async function createWindow() {
       event.preventDefault();
 
       try {
-        await mainWindow.webContents.executeJavaScript(`
-          try {
-            const audio = document.querySelector('audio');
-            const video = document.querySelector('video');
-            const playButton = document.querySelector('[data-testid="play-pause-button"], .play-pause-button, [aria-label*="pause" i], [title*="pause" i]');
-            
-            if (audio && !audio.paused) audio.pause();
-            if (video && !video.paused) video.pause();
-            if (playButton && playButton.getAttribute('aria-label') && playButton.getAttribute('aria-label').toLowerCase().includes('pause')) {
-              playButton.click();
-            }
-          } catch (e) {
-            console.log('Could not pause audio:', e);
-          }
-        `);
-        let currentUrl = mainWindow.webContents.getURL();
-
-        // Only save URL/time parameter if 'openLastSong' is enabled
-        if (openLastSong) {
-          // Only add time parameter if 'resumePlayback' is enabled AND it's a watch page
-          if (
-            resumePlayback &&
-            currentUrl.includes("music.youtube.com/watch")
-          ) {
-            // Execute script to get current time in seconds
-            const currentTimeValue = await mainWindow.webContents
-              .executeJavaScript(`
-                // Get the 'value' attribute of the progress bar slider, which is the time in seconds
-                document.querySelector('#progress-bar > #sliderContainer > div > #sliderBar')?.getAttribute('value');
-            `);
-
-            // Convert the value to an integer
-            const timeInSeconds = parseInt(currentTimeValue, 10);
-
-            // Check if the time is a valid positive number
-            if (!isNaN(timeInSeconds) && timeInSeconds > 0) {
-              // Use URL object for clean parameter management
-              try {
-                const urlObject = new URL(currentUrl);
-                urlObject.searchParams.set("t", timeInSeconds);
-                currentUrl = urlObject.toString();
-              } catch (e) {
-                console.log(
-                  "Error modifying URL with time parameter:",
-                  e.message,
-                );
-              }
-            }
-          }
-        } else {
-          // If openLastSong is disabled, force default URL for next launch
-          currentUrl = "https://music.youtube.com";
+        if (ytView && !ytView.webContents.isDestroyed()) {
+          lastUrl = await saveLastSongSession(ytView.webContents, {
+            openLastSong,
+            resumePlayback,
+            defaultUrl: "https://music.youtube.com",
+          });
+          await saveConfig();
+          console.log(`URL saved: ${lastUrl}`);
         }
-
-        lastUrl = currentUrl;
-        await saveConfig();
-        console.log(`URL saved: ${lastUrl}`);
-        if (mainWindow && !mainWindow.isDestroyed()) {
-          mainWindow.destroy();
-        }
-        app.quit();
       } catch (error) {
-        console.log("Error pausing audio:", error);
+        console.log("Error closing window:", error);
+      } finally {
         if (mainWindow && !mainWindow.isDestroyed()) {
           mainWindow.destroy();
         }
@@ -1391,155 +1046,56 @@ async function createWindow() {
     }
   });
 
-  const youtubeMusicDomain = "music.youtube.com";
-
-  let finalUrlToLoad = `https://${youtubeMusicDomain}`;
-
-  try {
-    const parsedUrl = new URL(lastUrl);
-    if (parsedUrl.hostname === youtubeMusicDomain) {
-      if (openLastSong && !resumePlayback) {
-        parsedUrl.searchParams.delete("t");
-      } else if (!openLastSong) {
-        parsedUrl.pathname = "/";
-        parsedUrl.search = "";
-      }
-      finalUrlToLoad = parsedUrl.toString();
-    } else {
-      console.warn(
-        `Attempted to load an invalid URL: ${lastUrl}. Defaulting to ${finalUrlToLoad}`,
-      );
-    }
-  } catch (e) {
-    console.error(`Error parsing lastUrl "${lastUrl}":`, e.message);
-  }
-
-  mainWindow.loadURL(finalUrlToLoad);
+  const finalUrlToLoad = computeStartupUrl(lastUrl, { openLastSong, resumePlayback });
+  ytView.webContents.loadURL(finalUrlToLoad);
   console.log(`Loading URL: ${finalUrlToLoad}`);
 
   // Offline page
-  mainWindow.webContents.on(
+  ytView.webContents.on(
     "did-fail-load",
     (event, errorCode, errorDescription, validatedURL, isMainFrame) => {
       if (isMainFrame && errorCode !== -3) {
         console.log(
           `Failed to load ${validatedURL}: ${errorDescription} (${errorCode})`,
         );
-        mainWindow.loadFile(path.join(__dirname, "offline/offline.html"));
+        lastFailedUrl = validatedURL || lastFailedUrl;
+        ytView.webContents.loadFile(path.join(__dirname, "offline/offline.html"));
       }
     },
   );
 
-  // Hide cast buttons
-  mainWindow.webContents.once("did-finish-load", () => {
-    mainWindow.webContents.insertCSS(`
-      .ytmusic-player-bar .middle-controls [aria-label*="cast" i],
-      .ytmusic-player-bar .middle-controls [aria-label*="connect" i],
-      ytmusic-menu-service-item-renderer[aria-label*="connect" i],
-      ytmusic-menu-service-item-renderer[aria-label*="cast" i],
-      tp-yt-google-cast,
-      .ytp-button[aria-label*="cast" i],
-      .ytp-button[data-tooltip-target-id*="cast"],
-      [data-title*="Cast"],
-      [data-title*="Connect"],
-      button[aria-label*="Connect to a device"],
-      button[aria-label*="Cast"],
-      .ytmusic-nav-bar [role="button"][aria-label*="cast" i],
-      .ytmusic-nav-bar [role="button"][aria-label*="connect" i],
-      .ytmusic-menu-service-item-renderer:has([aria-label*="cast" i]),
-      .ytmusic-menu-service-item-renderer:has([aria-label*="connect" i])
-      {
-        display: none !important;
-        visibility: hidden !important;
-      }
-    `);
-    console.log("Cast buttons hidden");
+  // Hide cast buttons & inject scripts on every load / refresh
+  let initialLoadDone = false;
+  ytView.webContents.on("did-finish-load", () => {
+    if (!ytView.webContents.getURL().startsWith("file:")) {
+      lastFailedUrl = null;
+    }
+    hideCastButtons(ytView.webContents);
 
-    injectVideoAdSkipper(mainWindow.webContents, {
+    injectVideoAdSkipper(ytView.webContents, {
       enabled: videoAdSkipperEnabled,
       speed: VideoAdSkipSpeed,
       interval: VideoAdSkipInterval,
     });
-    initDiscordRpc(mainWindow);
-    initListenAlong(mainWindow, pushListenAlongState);
-    if (listenAlongAutoHost) {
-      require("./listen-along/listenAlong").setAutoHost(true, listenAlongHostName);
+
+    if (!initialLoadDone) {
+      initialLoadDone = true;
+      const playerHost = {
+        get webContents() { return ytView.webContents; },
+        isDestroyed: () => !ytView || ytView.webContents.isDestroyed(),
+        loadURL: (url) => ytView.webContents.loadURL(url),
+      };
+      initDiscordRpc(playerHost, discordRpcEnabled);
+      initListenAlong(playerHost, pushListenAlongState);
+      require("./listen-along/listenAlong").setAutoHost(listenAlongAutoHost, listenAlongHostName);
+      if (listenAlongAutoHost && listenAlongHostName && listenAlongHostName.trim().length >= 3) {
+        console.log(`[ListenAlong] Triggering auto-host on startup for "${listenAlongHostName}"...`);
+        require("./listen-along/listenAlong").triggerAutoHostOnStartup(listenAlongHostName);
+      }
+      applyStartupPlayback(ytView.webContents, { openLastSong, resumePlayback, lastUrl });
     }
 
-    // Inject JavaScript to auto-continue listening
-    mainWindow.webContents.executeJavaScript(`
-      (function() {
-        const checkInterval = ${autoContinueListeningInterval};
-        let lastDismissTime = 0;
-
-        function dismissDialog() {
-          try {
-            // Prevent rapid re-clicking
-            const now = Date.now();
-            if (now - lastDismissTime < 2000) return false;
-        
-            // Multiple dialog selectors
-            const dialogSelectors = [
-              'tp-yt-paper-dialog.style-scope',
-              'ytmusic-you-there-renderer',
-              'tp-yt-paper-dialog[role="dialog"]'
-            ];
-        
-            let dialog = null;
-            for (const selector of dialogSelectors) {
-              const element = document.querySelector(selector);
-              if (element && window.getComputedStyle(element).display !== 'none' && element.offsetParent !== null) {
-                dialog = element;
-                break;
-              }
-            }
-            
-            if (!dialog) return false;
-        
-            // Check dialog content
-            const dialogText = dialog.textContent?.toLowerCase() || '';
-            const isKeepListeningDialog = dialogText.includes('still listening') || 
-                                           dialogText.includes('still there') || 
-                                           dialogText.includes('you there') ||
-                                           dialogText.includes('video paused') ||
-                                           dialogText.includes('continue watching');
-
-            if (!isKeepListeningDialog) return false;
-
-            // Multiple button selectors
-            const buttonSelectors = [
-              'yt-button-renderer.ytmusic-you-there-renderer',
-              'tp-yt-paper-button#button',
-              '[aria-label*="Yes" i]',
-              '[aria-label*="Continue" i]',
-              'button'
-            ];
-
-            for (const selector of buttonSelectors) {
-              const confirmButton = dialog.querySelector(selector);
-              if (confirmButton && confirmButton.offsetParent !== null && !confirmButton.disabled) {
-                confirmButton.click();
-                lastDismissTime = now;
-                console.log('Auto-dismissed "Keep listening?" dialog');
-                return true;
-              }
-            }
-          } catch (e) {
-            console.error('Error in dismissDialog:', e);
-          }
-          return false;
-        }
-
-        // Check periodically
-        setInterval(dismissDialog, checkInterval);
-
-        // Watch for dialog appearing
-        const observer = new MutationObserver(dismissDialog);
-        observer.observe(document.body, { childList: true, subtree: true });
-
-        console.log('Auto-continue listening feature initialized');
-      })();
-    `);
+    injectAutoContinue(ytView.webContents, autoContinueListeningInterval);
   });
 }
 
@@ -1605,9 +1161,7 @@ if (gotTheLock) {
   app.whenReady().then(createWindow);
 
   app.on("window-all-closed", () => {
-    if (miniPlayerWindow && !miniPlayerWindow.isDestroyed()) {
-      miniPlayerWindow.close();
-    }
+    closeMiniPlayerWindow();
     if (!minimizeToTray) {
       if (process.platform !== "darwin") {
         app.quit();
@@ -1619,9 +1173,7 @@ if (gotTheLock) {
     if (BrowserWindow.getAllWindows().length === 0) {
       createWindow();
     } else {
-      if (miniPlayerWindow && !miniPlayerWindow.isDestroyed()) {
-        miniPlayerWindow.close();
-      }
+      closeMiniPlayerWindow();
       mainWindow.show();
       mainWindow.focus();
     }

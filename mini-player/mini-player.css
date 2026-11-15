@@ -33,6 +33,36 @@ body.blur {
     --accent-color: #ff5858;
 }
 
+body.crimson {
+    --bg-color: #0f0507;
+    --text-color: #ffffff;
+    --accent-color: #ff0033;
+}
+
+body.emerald {
+    --bg-color: #050f08;
+    --text-color: #f0fdf4;
+    --accent-color: #10b981;
+}
+
+body.violet {
+    --bg-color: #0b0614;
+    --text-color: #f5f3ff;
+    --accent-color: #c084fc;
+}
+
+body.nord {
+    --bg-color: #13171f;
+    --text-color: #f1f5f9;
+    --accent-color: #38bdf8;
+}
+
+body.amber {
+    --bg-color: #140e06;
+    --text-color: #fffbeb;
+    --accent-color: #f59e0b;
+}
+
 #mini-player-container {
     display: flex;
     flex-direction: column;

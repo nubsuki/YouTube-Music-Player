@@ -6,16 +6,35 @@ let client = null;
 let presenceUpdateInterval = null;
 let reconnectTimer = null;
 let connecting = false;
+let rpcEnabled = true;
+
+function setDiscordRpcEnabled(enabled) {
+  const next = !!enabled;
+  if (rpcEnabled === next) return;
+  rpcEnabled = next;
+  console.log(`[Discord RPC] Enabled: ${rpcEnabled}`);
+  if (!rpcEnabled) {
+    if (reconnectTimer) {
+      clearTimeout(reconnectTimer);
+      reconnectTimer = null;
+    }
+    teardownClient();
+  } else {
+    if (mainWindowRef && !mainWindowRef.isDestroyed()) {
+      connectToDiscord();
+    }
+  }
+}
 
 function isClientAlive(c) {
   return !!c && (typeof c.isConnected === "boolean" ? c.isConnected : true);
 }
 
 function scheduleReconnect(delay = 10000) {
-  if (reconnectTimer) return;
+  if (!rpcEnabled || reconnectTimer) return;
   reconnectTimer = setTimeout(() => {
     reconnectTimer = null;
-    connectToDiscord();
+    if (rpcEnabled) connectToDiscord();
   }, delay);
 }
 
@@ -28,6 +47,9 @@ function teardownClient() {
   client = null;
   if (old) {
     try {
+      if (typeof old.user?.clearActivity === "function") {
+        Promise.resolve(old.user.clearActivity()).catch(() => {});
+      }
       old.removeAllListeners();
       old.on("error", () => {});
       Promise.resolve(old.destroy()).catch(() => {});
@@ -36,6 +58,7 @@ function teardownClient() {
 }
 
 function handleDiscordDisconnect() {
+  if (!rpcEnabled) return;
   console.warn("Discord connection lost. Reconnecting in 10s...");
   teardownClient();
   scheduleReconnect();
@@ -268,7 +291,7 @@ async function getCurrentSongInfo() {
 }
 
 async function connectToDiscord() {
-  if (connecting) return;
+  if (!rpcEnabled || connecting) return;
   connecting = true;
 
   teardownClient();
@@ -327,7 +350,9 @@ async function connectToDiscord() {
   }
 }
 
-function initDiscordRpc(mainWindow) {
+function initDiscordRpc(mainWindow, enabled = true) {
+  rpcEnabled = enabled !== undefined ? !!enabled : true;
+
   if (!clientId) {
     console.warn("Discord RPC disabled: YTMP_DISCORD_CLIENT_ID is not set.");
     return;
@@ -339,9 +364,12 @@ function initDiscordRpc(mainWindow) {
   }
 
   mainWindowRef = mainWindow;
-  connectToDiscord();
+  if (rpcEnabled) {
+    connectToDiscord();
+  }
 }
 
 module.exports = {
   initDiscordRpc,
+  setDiscordRpcEnabled,
 };

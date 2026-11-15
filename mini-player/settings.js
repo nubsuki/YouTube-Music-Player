@@ -9,7 +9,9 @@ if (closeBtn) closeBtn.addEventListener('click', () => window.close());
 async function applyTranslations() {
     try {
         const translations = await window.electronAPI.getTranslations([
-            'mini_player_settings', 'theme', 'theme_midnight', 'theme_blur', 'always_on_top'
+            'mini_player_settings', 'theme', 'theme_midnight', 'theme_blur',
+            'theme_crimson', 'theme_emerald', 'theme_violet', 'theme_nord', 'theme_amber',
+            'always_on_top'
         ]);
 
         themeTitle.textContent = translations['mini_player_settings'];
@@ -24,7 +26,7 @@ async function applyTranslations() {
 
 async function initTheme() {
     const currentTheme = await window.electronAPI.getTheme();
-    const allowedThemes = new Set(['midnight', 'blur']);
+    const allowedThemes = new Set(['midnight', 'blur', 'crimson', 'emerald', 'violet', 'nord', 'amber']);
 
     const resolvedTheme = allowedThemes.has(currentTheme) ? currentTheme : 'midnight';
     if (resolvedTheme !== currentTheme) {
